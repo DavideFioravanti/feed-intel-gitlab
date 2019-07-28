@@ -1,0 +1,591 @@
+From 24d16946f6c686ecdbd761907d0cc4524923b810 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 13 Jul 2018 03:54:38 +0200
+Subject: [PATCH] Merge pull request #67 in SW_UGW/linux from
+ feature/DRVLIB_SW-772-ethernet-driver-mdio-related-update-2 to master
+
+* commit '6863c5f79bc263944b008f871c6a00eaec780117':
+  DRVLIB_SW-772: enable the genetlink for link event
+  DRVLIB_SW-772: support passing mac address from module parameter
+  DRVLIB_SW-772: remove the l2hdr check for port 12/14 for grx500
+  DRVLIB_SW-772: remove CONFIG_XRX500_MDIO_SUPPORT macro code
+---
+ drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c | 344 ++++++++---------------
+ 1 file changed, 111 insertions(+), 233 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+index a38c694dc4b5..e5e7d22056dd 100644
+--- a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
++++ b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+@@ -3,8 +3,7 @@
+  * Copyright (C) 2016~2018 Intel Corporation.
+  */
+ 
+-#define CONFIG_XRX500_MDIO_SUPPORT
+-#undef CONFIG_USERSPACE_LINK_NOTIFICATION
++#define CONFIG_USERSPACE_LINK_NOTIFICATION
+ 
+ #include <linux/version.h>
+ #include <linux/module.h>
+@@ -45,8 +44,6 @@
+  * and dev->eth_tx_timeout() should be called to fix the problem
+  */
+ #define LTQ_TX_TIMEOUT		(10 * HZ)
+-#define MY_ETH0_ADDR g_my_ethaddr
+-#define LTQ_ETHWAN_PORT 6
+ #define MDIO_PHY_ADDR_MASK	0x001f
+ #define MDIO_PHY_LINK_DOWN	0x4000
+ #define MDIO_PHY_LINK_UP	0x2000
+@@ -109,11 +106,10 @@ static enum ltq_cpufreq_state g_ltq_eth_drv_coc_state = LTQ_CPUFREQ_PS_D0;
+ static struct xrx500_hw xrx500_hw;
+ 
+ static char wan_iface[IFNAMSIZ] = "eth1";
+-static u8 g_my_ethaddr[MAX_ADDR_LEN * 2] = {0};
++static char *macaddr0;
++static char *macaddr1;
++static int multimac = 1;
+ 
+-#ifndef CONFIG_XRX500_MDIO_SUPPORT
+-static struct net_device *eth_dev[NUM_ETH_INF];
+-#endif
+ static struct module g_ltq_eth_module[NUM_ETH_INF];
+ static u32 g_rx_csum_offload;
+ static u32 g_eth_switch_mode;
+@@ -178,6 +174,7 @@ static int get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
+ 
+ 	priv = netdev_priv(dev);
+ 
++	pr_debug("in ethtool get setting for num %d\n", priv->num_port);
+ 	for (i = 0; i < priv->num_port; i++)
+ 		if (priv->port[i].phydev)
+ 			return phy_ethtool_gset(priv->port[i].phydev, cmd);
+@@ -231,6 +228,8 @@ static const struct ethtool_ops ethtool_ops = {
+ 	.set_settings		= set_settings,
+ 	.nway_reset		= nway_reset,
+ 	.get_link		= ethtool_op_get_link,
++	.get_link_ksettings	= phy_ethtool_get_link_ksettings,
++	.set_link_ksettings	= phy_ethtool_set_link_ksettings,
+ #if IS_ENABLED(CONFIG_LTQ_DATAPATH_PTP1588)
+ 	.get_ts_info		= get_tsinfo,
+ #endif
+@@ -408,6 +407,7 @@ static int ltq_set_mac_address(struct net_device *dev, void *p)
+ {
+ 	struct sockaddr *addr = p;
+ 
++	pr_debug("set_mac_addr called\n");
+ 	if (netif_running(dev))
+ 		return -EBUSY;
+ 
+@@ -637,7 +637,6 @@ static int ltq_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
+ /* init of the network device */
+ static int ltq_eth_init(struct net_device *dev)
+ {
+-#ifdef CONFIG_XRX500_MDIO_SUPPORT
+ 	int i;
+ 	struct ltq_switch_priv_t *priv;
+ 	int ret;
+@@ -647,12 +646,12 @@ static int ltq_eth_init(struct net_device *dev)
+ 	pr_debug("%s called for device %s\n", __func__, dev->name);
+ 
+ 	for (i = 0; i < priv->num_port; i++) {
+-		if (xrx500_mdio_probe(dev, &priv->port[i])) {
++		if (of_phy_is_fixed_link(priv->port[i].phy_node))
++			pr_debug("phy is fixed-link\n");
++		else if (xrx500_mdio_probe(dev, &priv->port[i]))
+ 			pr_warn("xrx500-mdio: probing phy of port %d failed\n",
+ 				priv->port[i].num);
+-		} else {
+-			dev->ethtool_ops = &ethtool_ops;
+-		}
++		dev->ethtool_ops = &ethtool_ops;
+ 	}
+ 
+ #if IS_ENABLED(CONFIG_LTQ_DATAPATH_PTP1588)
+@@ -670,8 +669,6 @@ static int ltq_eth_init(struct net_device *dev)
+ 		       __func__, dev->name, ret);
+ 		return -1;
+ 	}
+-
+-#endif
+ 	return 0;
+ }
+ 
+@@ -851,8 +848,7 @@ static int ltq_gsw_pmac_init(void)
+ 				eg_cfg.bPmacEna = 1;
+ 				/*PTM_Bonding_Mode*/
+ 				eg_cfg.bFcsEna = (k == 13) ? 1 : 0;
+-				eg_cfg.bRemL2Hdr = ((k == 12) ||
+-						    (k == 14)) ? 1 : 0;
++				eg_cfg.bRemL2Hdr = 0;
+ 				/*CAPWAP_HD_BYTES*/
+ 				eg_cfg.numBytesRem = (k == 14) ? 1 : 0;
+ 				eg_cfg.nResDW1	   = 0;
+@@ -967,39 +963,36 @@ static int ltq_gsw_pmac_init(void)
+ 	return 0;
+ }
+ 
+-static void ltq_eth_drv_eth_addr_setup(struct net_device *dev, int port)
++static void
++ltq_eth_drv_eth_addr_setup(struct net_device *dev, int port, int wan)
+ {
+-	u8 *ethaddr;
+-	u32 val;
+-	int i;
++	int i = 0;
++	u8 *macaddr_param = NULL;
++	u8 values[ETH_ALEN] = {0};
+ 
+-	if (port == LTQ_ETHWAN_PORT)
+-		ethaddr = MY_ETH0_ADDR + MAX_ADDR_LEN;
++	if (is_valid_ether_addr(dev->dev_addr))
++		return;
++
++	if (wan)
++		macaddr_param = macaddr1;
+ 	else
+-		ethaddr = MY_ETH0_ADDR;
+-
+-	/*  read MAC address from the MAC table and put them into device */
+-	for (i = 0, val = 0; i < 6; i++)
+-		val += dev->dev_addr[i];
+-
+-	if (val == 0) {
+-		for (i = 0, val = 0; i < 6; i++)
+-			val += ethaddr[i];
+-
+-		if (val == 0) {
+-			/*  ethaddr not set in u-boot   */
+-			dev->dev_addr[0] = 0x00;
+-			dev->dev_addr[1] = 0x20;
+-			dev->dev_addr[2] = 0xda;
+-			dev->dev_addr[3] = 0x86;
+-			dev->dev_addr[4] = 0x23;
+-			dev->dev_addr[5] = 0x74 + port;
+-		} else {
+-			for (i = 0; i < 5; i++)
+-				dev->dev_addr[i] = ethaddr[i];
++		macaddr_param = macaddr0;
+ 
+-			dev->dev_addr[5] = ethaddr[i] + port;
+-		}
++	if (macaddr_param) {
++		mac_pton(macaddr_param, values);
++		pr_debug("mac addr %s\n", macaddr_param);
++	}
++
++	/* read MAC address from the MAC table and put them into device */
++	if (is_valid_ether_addr(values)) {
++		pr_debug("using module param for port %d.\n", port);
++		for (i = 0; i < ETH_ALEN; i++)
++			dev->dev_addr[i] = values[i];
++		if (multimac)
++			dev->dev_addr[ETH_ALEN - 1] += port;
++	} else {
++		eth_hw_addr_random(dev);
++		pr_debug("using random mac for port %d.\n", port);
+ 	}
+ }
+ 
+@@ -1022,18 +1015,24 @@ enum eth_attr {
+ 
+ #define ETH_LINK_A_MAX (__ETH_A_MAX - 1)
+ 
++enum eth_multicast_groups {
++	ETH_MCGRP,
++};
++
++/* VRX318 TC message multicast group */
++static struct genl_multicast_group eth_grps[] = {
++	[ETH_MCGRP] = {.name = "eth_mcgrp",},
++};
++
+ /* VRX318 TC message genelink family */
+-struct genl_family eth_gnl_family = {
++static struct genl_family eth_gnl_family = {
+ 	.id = GENL_ID_GENERATE, /* To generate an id for the family*/
+ 	.hdrsize = 0,
+ 	.name = "eth_drv_notify", /*family name, used by userspace application*/
+ 	.version = 1, /*version number  */
+ 	.maxattr = ETH_LINK_A_MAX,
+-};
+-
+-/* VRX318 TC message multicast group */
+-struct genl_multicast_group eth_grp = {
+-	.name = "eth_mcgrp",
++	.mcgrps = eth_grps,
++	.n_mcgrps = ARRAY_SIZE(eth_grps),
+ };
+ 
+ /* API definition for the driver to send TC notify messages to user application
+@@ -1042,7 +1041,8 @@ struct genl_multicast_group eth_grp = {
+  * tc_msg: 1-link is up,0- link is down
+  * ln_no: interface name
+  */
+-int ltq_eth_nl_msg_send(int pid, int link_status, int speed, char *if_name)
++static int
++ltq_eth_nl_msg_send(int pid, int link_status, int speed, char *if_name)
+ {
+ 	struct sk_buff *skb;
+ 	int ret;
+@@ -1072,7 +1072,8 @@ int ltq_eth_nl_msg_send(int pid, int link_status, int speed, char *if_name)
+ 		nla_put_string(skb, ETH_A_LINK_STATUS, "down");
+ 	}
+ 	genlmsg_end(skb, msg_head);
+-	ret = genlmsg_multicast(skb, pid, eth_grp.id, GFP_KERNEL);
++	ret = genlmsg_multicast(&eth_gnl_family, skb, pid,
++				ETH_MCGRP, GFP_KERNEL);
+ 
+ 	if (ret != 0 && ret != -ESRCH) {
+ 		pr_err("failed to send out the multicast message:ret = %d\n",
+@@ -1085,7 +1086,7 @@ int ltq_eth_nl_msg_send(int pid, int link_status, int speed, char *if_name)
+ 	return ret;
+ }
+ 
+-int ltq_eth_genetlink_init(void)
++static int ltq_eth_genetlink_init(void)
+ {
+ 	int ret;
+ 
+@@ -1095,33 +1096,15 @@ int ltq_eth_genetlink_init(void)
+ 	if (ret != 0) {
+ 		pr_err("Family registeration fail:%s\n",
+ 		       eth_gnl_family.name);
+-		goto failure;
+ 	}
+ 
+-	ret = genl_register_mc_group(&eth_gnl_family, &eth_grp);
+-
+-	if (ret != 0) {
+-		pr_err("register mc group fail: %i, grp name: %s\n",
+-		       ret, eth_grp.name);
+-		genl_unregister_family(&eth_gnl_family);
+-		goto failure;
+-	} else
+-		pr_info("register mc group pass: %i, grp name: %s, grp id:%d\n",
+-			ret, eth_grp.name, eth_grp.id);
+-
+-	return 0;
+-
+-failure:
+ 	return ret;
+ }
+ 
+-void ltq_eth_genetlink_exit(void)
++static void ltq_eth_genetlink_exit(void)
+ {
+ 	int ret;
+ 
+-	/* unregister mc groups */
+-	genl_unregister_mc_group(&eth_gnl_family, &eth_grp);
+-
+ 	/*unregister the family*/
+ 	ret = genl_unregister_family(&eth_gnl_family);
+ 
+@@ -1157,35 +1140,57 @@ static int phy_netdevice_event(struct notifier_block *nb, unsigned long action,
+ 	return NOTIFY_OK;
+ }
+ 
+-#ifdef CONFIG_XRX500_MDIO_SUPPORT
+-static
+-void xrx500_of_port(struct ltq_switch_priv_t *priv, struct device_node *port)
++static void
++xrx500_of_port(struct net_device *dev, struct device_node *port)
+ {
+ 	const __be32 *addr, *id = of_get_property(port, "reg", NULL);
+-	struct xrx500_port *p = &priv->port[priv->num_port];
+ 	struct resource irqres;
++	struct ltq_switch_priv_t *priv = netdev_priv(dev);
++	struct xrx500_port *p = &priv->port[priv->num_port];
+ 
+ 	if (!id)
+ 		return;
+ 
+ 	memset(p, 0, sizeof(struct xrx500_port));
+ 	p->phy_node = of_parse_phandle(port, "phy-handle", 0);
+-	addr = of_get_property(p->phy_node, "reg", NULL);
++	p->phy_if = of_get_phy_mode(port);
+ 
+-	if (!addr) {
+-		pr_info("no real internal PHY attached to this interface !\n");
+-		return;
++	if (!p->phy_node) {
++		/* check if a fixed-link is defined in device-tree */
++		if (of_phy_is_fixed_link(port)) {
++			struct phy_device *phy;
++
++			pr_debug("fixed-link detected\n");
++			if (of_phy_register_fixed_link(port)) {
++				pr_err("cannot register fixed PHY\n");
++				return;
++			}
++			p->phy_node = of_node_get(port);
++			phy = of_phy_connect(dev,
++					     p->phy_node, NULL, 0,
++					     p->phy_if);
++			if (!phy)
++				pr_err("can not get phy dev for fixed link\n");
++			p->phydev = phy;
++			netif_carrier_on(dev);
++		} else {
++			pr_info("no interface attached to this interface!\n");
++			return;
++		}
++	} else {
++		addr = of_get_property(p->phy_node, "reg", NULL);
++		if (!addr) {
++			pr_info("no real PHY attached to this interface!\n");
++			return;
++		}
++		p->phy_addr = *addr;
++		if (of_irq_to_resource_table(port, &irqres, 1) == 1)
++			p->irq_num = irqres.start;
++		else
++			pr_info("couldn't get irq number for gphy !!\n");
+ 	}
+ 
+ 	p->num = *id;
+-	p->phy_addr = *addr;
+-	p->phy_if = of_get_phy_mode(port);
+-
+-	if (of_irq_to_resource_table(port, &irqres, 1) == 1)
+-		p->irq_num = irqres.start;
+-	else
+-		pr_err("couldn't get irq number for gphy !!\n");
+-
+ 	priv->num_port++;
+ 
+ 	/* is this port a wan port ? */
+@@ -1300,7 +1305,7 @@ static int xrx500_of_iface(struct xrx500_hw *hw, struct device_node *iface,
+ 	/* load the ports that are part of the interface */
+ 	for_each_child_of_node(iface, port) {
+ 		if (of_device_is_compatible(port, "lantiq,xrx500-pdi-port"))
+-			xrx500_of_port(priv, port);
++			xrx500_of_port(hw->devs[hw->num_devs], port);
+ 	}
+ 
+ #ifdef CONFIG_LTQ_TOE_DRIVER
+@@ -1330,7 +1335,7 @@ static int xrx500_of_iface(struct xrx500_hw *hw, struct device_node *iface,
+ 	} else {
+ 		pr_info("%s: rx csum offload is disabled !\n", __func__);
+ 	}
+-	ltq_eth_drv_eth_addr_setup(hw->devs[hw->num_devs], priv->id);
++	ltq_eth_drv_eth_addr_setup(hw->devs[hw->num_devs], priv->id, priv->wan);
+ 
+ 	/* register the actual device */
+ 	if (!register_netdev(hw->devs[hw->num_devs]))
+@@ -1585,7 +1590,6 @@ static int xrx500_mdio_probe(struct net_device *dev, struct xrx500_port *port)
+ 	phy_start_aneg(phydev);
+ 	return 0;
+ }
+-#endif
+ 
+ #ifdef CONFIG_XRX500_ETH_DRV_COC_SUPPORT
+ /* switch api related routines */
+@@ -1868,16 +1872,8 @@ static int ltq_eth_drv_init(struct platform_device *pdev)
+ {
+ 	int ret = 0;
+ 	struct device_node *node = pdev->dev.of_node;
+-#ifdef CONFIG_XRX500_MDIO_SUPPORT
+ 	struct device_node *mdio_np, *iface_np;
+ 	struct mii_bus *bus;
+-#else
+-	dp_cb_t cb = {0};
+-	u32 dp_port_id = 0;
+-	int i = 0;
+-	struct ltq_switch_priv_t *priv = NULL;
+-#endif
+-
+ #ifdef CONFIG_XRX500_ETH_DRV_COC_SUPPORT
+ 	struct resource irqres[2];
+ #endif
+@@ -1912,7 +1908,6 @@ static int ltq_eth_drv_init(struct platform_device *pdev)
+ 		ret = 0;
+ 	}
+ 
+-#ifdef CONFIG_XRX500_MDIO_SUPPORT
+ 	/* bring up the mdio bus */
+ 	mdio_np = of_find_compatible_node(node, NULL,
+ 					  "lantiq,xrx500-mdio");
+@@ -1969,128 +1964,6 @@ static int ltq_eth_drv_init(struct platform_device *pdev)
+ 		dev_err(&pdev->dev, "failed to load interfaces\n");
+ 		return -ENOENT;
+ 	}
+-
+-#else
+-	for (i = 0; i < NUM_ETH_INF; i++) {
+-		static char name[16];
+-		int err;
+-
+-		if (i == 6)
+-			sprintf(name, wan_iface);
+-		else
+-			sprintf(name, "eth0_%d", i);
+-
+-		eth_dev[i] = alloc_etherdev(sizeof(ltq_switch_priv_t));
+-
+-		if (!eth_dev[i]) {
+-			pr_err("%s[%d]: no memory for eth_dev!!!\n",
+-			       __func__, __LINE__);
+-			ret = -ENOMEM;
+-			break;
+-		}
+-
+-		/* setup the network device */
+-		strcpy(eth_dev[i]->name, name);
+-		eth_dev[i]->netdev_ops = &ltq_eth_drv_ops;
+-		eth_dev[i]->watchdog_timeo = LTQ_TX_TIMEOUT;
+-		eth_dev[i]->needed_headroom = sizeof(ltq_pmac_header_t);
+-		/*eth_dev[i]->ifindex = i+1;*/
+-
+-		/* setup the private data */
+-		priv = netdev_priv(eth_dev[i]);
+-		priv->phy_addr = i;
+-
+-		/* By default, advertise supported  speed/duplex settings. */
+-		priv->flags |= (FLAG_ADV_10HALF |
+-				FLAG_ADV_10FULL |
+-				FLAG_ADV_100HALF |
+-				FLAG_ADV_100FULL |
+-				FLAG_ADV_1000HALF |
+-				FLAG_ADV_1000FULL);
+-
+-		/* By default, auto-negotiate PAUSE. */
+-		priv->flags |= FLAG_PAUSE_AUTO;
+-		spin_lock_init(&priv->lock);
+-
+-		priv->owner = &g_ltq_eth_module[i];
+-		sprintf(priv->owner->name, "module%02d", i);
+-
+-		if (i == 6) {
+-			dp_port_id  = dp_alloc_port(priv->owner, eth_dev[i],
+-						    15, 15, NULL,
+-						    DP_F_FAST_ETH_WAN);
+-		} else {
+-			dp_port_id  = dp_alloc_port(priv->owner, eth_dev[i],
+-						    i + 1,
+-						    i + 1,
+-						    NULL,
+-						    DP_F_FAST_ETH_LAN);
+-		}
+-
+-		if (dp_port_id == DP_FAILURE) {
+-			pr_err("dp_alloc_port failed for %s with port_id %d\n",
+-			       eth_dev[i]->name, i + 1);
+-			ret = -ENODEV;
+-			break;
+-		}
+-
+-		priv->dp_port_id = dp_port_id;
+-		cb.stop_fn = (dp_stop_tx_fn_t)dp_fp_stop_tx;
+-		cb.restart_fn = (dp_restart_tx_fn_t)dp_fp_restart_tx;
+-		cb.rx_fn = (dp_rx_fn_t)dp_fp_rx;
+-#ifdef CONFIG_XRX500_ETH_DRV_COC_SUPPORT
+-		cb.dp_coc_confirm_stat_fn = dp_fp_coc_confirm;
+-#endif
+-		ret = dp_register_dev(priv->owner, dp_port_id, &cb, 0);
+-
+-		if (ret != DP_SUCCESS) {
+-			pr_err("dp_register_dev failed for %s\n and port_id %d",
+-			       eth_dev[i]->name, dp_port_id);
+-			dp_alloc_port(priv->owner, eth_dev[i], i, i + 1,
+-				      NULL, DP_F_DEREGISTER);
+-			ret = -ENODEV;
+-			break;
+-		}
+-
+-#ifdef CONFIG_LTQ_TOE_DRIVER
+-		eth_dev[i]->features = NETIF_F_SG | NETIF_F_TSO |
+-				       NETIF_F_HW_CSUM;
+-		eth_dev[i]->hw_features = NETIF_F_SG | NETIF_F_TSO |
+-					  NETIF_F_HW_CSUM;
+-		eth_dev[i]->vlan_features = NETIF_F_SG | NETIF_F_TSO |
+-					    NETIF_F_HW_CSUM;
+-		eth_dev[i]->gso_max_size  = GSO_MAX_SIZE;
+-#endif
+-
+-		if (g_rx_csum_offload) {
+-			pr_debug("%s: rx csum offload is enabled\n", __func__);
+-			eth_dev[i]->features |= NETIF_F_RXCSUM;
+-			eth_dev[i]->hw_features |= NETIF_F_RXCSUM;
+-		} else {
+-			pr_debug("%s: rx csum offload is disabled\n", __func__);
+-		}
+-		ltq_eth_drv_eth_addr_setup(eth_dev[i], i);
+-		err = register_netdev(eth_dev[i]);
+-
+-		if (err) {
+-			pr_err("%s[%d]: Register with network device failed\n",
+-			       __func__, __LINE__);
+-			pr_err("err:%d for device: %s!\n", err, name);
+-			break;
+-		}
+-	}
+-
+-	if (ret) {
+-		for (i = 0; i < NUM_ETH_INF; i++) {
+-			if (eth_dev[i])
+-				free_netdev(eth_dev[i]);
+-		}
+-
+-		return ret;
+-	}
+-
+-#endif
+-
+ #ifdef CONFIG_USERSPACE_LINK_NOTIFICATION
+ 	/* Register the netlink notification */
+ 	ltq_eth_genetlink_init();
+@@ -2140,7 +2013,6 @@ static void ltq_eth_drv_exit(struct platform_device *pdev)
+ {
+ 	int i, ret, j;
+ 
+-#ifdef CONFIG_XRX500_MDIO_SUPPORT
+ 	for (i = 0; i < xrx500_hw.num_devs; i++) {
+ 		struct ltq_switch_priv_t *priv;
+ 		struct net_device *dev = xrx500_hw.devs[i];
+@@ -2156,9 +2028,16 @@ static void ltq_eth_drv_exit(struct platform_device *pdev)
+ 
+ 		for (j = 0; j < priv->num_port; j++)
+ 			if (priv->port[j].phydev) {
++				struct device_node *device;
++
++				device = priv->port[j].phy_node;
+ 				pr_debug("phy_disconnect phydev(%d) 0x%p\n",
+ 					 j, priv->port[j].phydev);
+ 				phy_disconnect(priv->port[j].phydev);
++				if (of_phy_is_fixed_link(device)) {
++					of_phy_deregister_fixed_link(device);
++					pr_debug("deregister the fixed link\n");
++				}
+ 			}
+ 
+ 		pr_debug("ltq_eth_drv_exit i %d dev_id %d port_id %d for device %s\n",
+@@ -2201,14 +2080,6 @@ static void ltq_eth_drv_exit(struct platform_device *pdev)
+ 	}
+ 
+ 	memset(&xrx500_hw, 0, sizeof(xrx500_hw));
+-#else
+-	/* unregister the network devices */
+-	for (i = 0; i < NUM_ETH_INF; i++) {
+-		unregister_netdev(eth_dev[i]);
+-		free_netdev(eth_dev[i]);
+-	}
+-#endif
+-
+ #ifdef CONFIG_USERSPACE_LINK_NOTIFICATION
+ 	ltq_eth_genetlink_exit();
+ #endif
+@@ -2274,6 +2145,13 @@ static struct platform_driver ltq_eth_driver = {
+ 
+ module_platform_driver(ltq_eth_driver);
+ 
++module_param(macaddr0, charp, 0644);
++module_param(macaddr1, charp, 0644);
++module_param(multimac, int, 0644);
++MODULE_PARM_DESC(macaddr0, "eth0 MAC address");
++MODULE_PARM_DESC(macaddr1, "eth1 MAC address");
++MODULE_PARM_DESC(multimac, "Multi MAC address for ports");
++
+ MODULE_DESCRIPTION("Intel ethernet driver");
+ MODULE_LICENSE("GPL v2");
+ MODULE_VERSION(DRV_MODULE_VERSION);

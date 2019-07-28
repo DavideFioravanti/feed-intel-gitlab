@@ -1,0 +1,284 @@
+From 47f4ad2f910a1d63d1ab0852846a9e5a453ec7b4 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 12 Oct 2018 18:37:25 +0200
+Subject: [PATCH] Merge pull request #214 in SW_UGW/linux from
+ feature/DRVLIB_SW-846-lan-ethernet-driver-ethtool-features to master
+
+* commit 'f38f2ce06dfd75972ea3a30bd2c13a729a7247ff':
+  DRVLIB_SW-846 - Add P31G into lantiq phy driver list
+  DRVLIB_SW-846 - Add prx300 specific phy_connect function in ltq_eth_drv
+  DRVLIB_SW-846 - Fix xgmac mdio DT probing
+---
+ drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c   | 54 +++++++++++++++----
+ drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.h   |  1 +
+ .../net/ethernet/lantiq/switch-api/mac/mac_drv.c   |  1 +
+ .../ethernet/lantiq/switch-api/mac/xgmac_common.h  |  1 -
+ .../ethernet/lantiq/switch-api/mac/xgmac_mdio.c    | 63 +++++++---------------
+ drivers/net/phy/lantiq.c                           | 11 ++++
+ 6 files changed, 77 insertions(+), 54 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+index 07f3fc17d116..e86c6e503294 100644
+--- a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
++++ b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+@@ -637,8 +637,8 @@ static int ltq_eth_init(struct net_device *dev)
+ 	for (i = 0; i < priv->num_port; i++) {
+ 		if (of_phy_is_fixed_link(priv->port[i].phy_node))
+ 			pr_debug("phy is fixed-link\n");
+-		else if (xrx500_mdio_probe(dev, &priv->port[i]))
+-			pr_warn("xrx500-mdio: probing phy of port %d failed\n",
++		else if (g_soc_data.phy_connect_func(dev, &priv->port[i]))
++			pr_warn("connect phy of port %d failed\n",
+ 				priv->port[i].num);
+ 		dev->ethtool_ops = &ethtool_ops;
+ 	}
+@@ -1540,6 +1540,46 @@ static void xrx500_mdio_link(struct net_device *dev)
+ 	}
+ }
+ 
++/* PRX300 MDIO bus interface is owned by xgmac. The PHY device therefore do not
++ * need to be probed here, as it is done by xgmac. What we need to do is simply
++ * connect the PHY.
++ */
++static int prx300_phy_connect(struct net_device *dev, struct xrx500_port *port)
++{
++	struct phy_device *phydev = NULL;
++	struct ltq_eth_priv *priv = NULL;
++
++	priv = netdev_priv(dev);
++
++	phydev = of_phy_connect(dev, port->phy_node, &xrx500_mdio_link,
++				0, port->phy_if);
++	if (!phydev) {
++		netdev_err(dev, "Unable to find phydev\n");
++		return -ENODEV;
++	}
++
++	phydev->supported &= (SUPPORTED_10baseT_Half
++			      | SUPPORTED_10baseT_Full
++			      | SUPPORTED_100baseT_Half
++			      | SUPPORTED_100baseT_Full
++			      | SUPPORTED_1000baseT_Half
++			      | SUPPORTED_1000baseT_Full
++			      | SUPPORTED_Autoneg
++			      | SUPPORTED_MII
++			      | SUPPORTED_TP);
++	phydev->advertising = phydev->supported;
++	port->phydev = phydev;
++
++	pr_info("%s: attached PHY [%s] (phy_addr=%s, irq=%d)\n",
++		dev->name, phydev->drv->name,
++		phydev_name(phydev), phydev->irq);
++
++	phy_read_status(phydev);
++	phy_start_aneg(phydev);
++
++	return 0;
++}
++
+ static int xrx500_mdio_probe(struct net_device *dev, struct xrx500_port *port)
+ {
+ 	struct phy_device *phydev = NULL;
+@@ -1929,14 +1969,6 @@ static int ltq_eth_drv_init(struct platform_device *pdev)
+ 			if (xrx500_of_mdio_pae(&xrx500_hw, mdio_np))
+ 				dev_err(&pdev->dev, "mdio probe of PAE failed\n");
+ 
+-	} else {
+-		mdio_np = of_find_compatible_node(node, NULL,
+-						  "intel,falconmx-mdio");
+-
+-		if (mdio_np)
+-			pr_debug("The mdio bus intel,falconmx-mdio found.\n");
+-		else
+-			pr_err("No MDIO bus defined!\n");
+ 	}
+ 
+ 	bus = xrx500_hw.mii_bus;
+@@ -2125,12 +2157,14 @@ static const struct ltq_net_soc_data xrx500_net_data = {
+ 	.need_defer = true,
+ 	.hw_checksum = true,
+ 	.queue_num = 1,
++	.phy_connect_func = &xrx500_mdio_probe,
+ };
+ 
+ static const struct ltq_net_soc_data falconmx_net_data = {
+ 	.need_defer = false,
+ 	.hw_checksum = false,
+ 	.queue_num = 8,
++	.phy_connect_func = &prx300_phy_connect,
+ };
+ 
+ static const struct of_device_id ltq_eth_drv_match[] = {
+diff --git a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.h b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.h
+index 87101d873df8..518693c9edf2 100644
+--- a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.h
++++ b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.h
+@@ -122,5 +122,6 @@ struct ltq_net_soc_data {
+ 	bool need_defer;
+ 	bool hw_checksum;
+ 	unsigned int queue_num;
++	int (*phy_connect_func)(struct net_device *, struct xrx500_port *);
+ };
+ #endif /* _LANTIQ_ETH_DRV_H_ */
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c b/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c
+index dcee5bab33bf..e4eee8d34a98 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c
+@@ -175,6 +175,7 @@ static int mac_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	pdata->ptp_clk = (u32)clk_get_rate(pdata->ker_ptp_clk);
++	pdata->dev = dev;
+ 
+ 	/* Init function fointers */
+ 	mac_init_fn_ptrs(&pdata->ops);
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_common.h b/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_common.h
+index 5e206ad9ccfd..0d846e756b69 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_common.h
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_common.h
+@@ -684,7 +684,6 @@ struct mac_prv_data {
+ 	u32 mdio_int;
+ 
+ 	u32 phyadr;
+-	u32 bus_id;
+ 
+ 	u32 ptp_clk;
+ 
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_mdio.c b/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_mdio.c
+index fbe3b7ab4cb3..44d789142371 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_mdio.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_mdio.c
+@@ -43,8 +43,7 @@
+ #include <xgmac_mdio.h>
+ #include <xgmac.h>
+ #ifdef __KERNEL__
+-#include <linux/phy.h>
+-#include <linux/mdio.h>
++#include <linux/of_mdio.h>
+ #endif
+ 
+ static void dump_phy_registers(void *pdev);
+@@ -443,13 +442,13 @@ static int xgmac_mdio_read(struct mii_bus *bus, int phyadr, int phyreg)
+ 	struct mac_prv_data *pdata = GET_MAC_PDATA(pdev);
+ 	int phydata;
+ 
+-	mac_printf("XGMAC %d: MDIO Read phyadr = %d, phyreg = %d\n",
+-		   pdata->mac_idx, phyadr, phyreg);
++	mac_dbg("XGMAC %d: MDIO Read phyadr = %d, phyreg = %d\n",
++		pdata->mac_idx, phyadr, phyreg);
+ 
+ 	xgmac_mdio_single_rd(pdev, 0, phyadr, phyreg, &phydata);
+ 
+-	mac_printf("XGMAC %d: MDIO Read phydata = %#x\n",
+-		   pdata->mac_idx, phydata);
++	mac_dbg("XGMAC %d: MDIO Read phydata = %#x\n",
++		pdata->mac_idx, phydata);
+ 
+ 	return phydata;
+ }
+@@ -475,9 +474,9 @@ static int xgmac_mdio_write(struct mii_bus *bus, int phyadr, int phyreg,
+ 
+ 	xgmac_mdio_single_wr(pdev, 0, phyadr, phyreg, phydata);
+ 
+-	mac_printf("XGMAC %d: MDIO Write"
+-		   "phyadr %x phyreg %x phydata %x Completed\n",
+-		   pdata->mac_idx, phyadr, phyreg, phydata);
++	mac_dbg("XGMAC %d: MDIO Write"
++		"phyadr %x phyreg %x phydata %x Completed\n",
++		pdata->mac_idx, phyadr, phyreg, phydata);
+ 
+ 	return ret;
+ }
+@@ -521,45 +520,19 @@ int xgmac_mdio_register(void *pdev)
+ {
+ 	struct mac_prv_data *pdata = GET_MAC_PDATA(pdev);
+ 	struct mii_bus *new_bus = NULL;
+-	int phyadr = 0;
+-	unsigned short phy_detected = 0;
+ 	int ret = 0;
+-	int phy_reg_read_status, mii_status;
++	struct device_node *mdio_np;
+ 
+ 	mac_printf("XGMAC %d: mdio register\n", pdata->mac_idx);
+ 
+-	/* find the phy ID or phy address which is connected to our MAC */
+-	for (phyadr = 0; phyadr < 32; phyadr++) {
+-		phy_reg_read_status =
+-			xgmac_mdio_single_rd(&pdata->ops, 0, phyadr, MII_BMSR,
+-					     &mii_status);
+-
+-		if (phy_reg_read_status == 0) {
+-			if (mii_status != 0x0000 && mii_status != 0xffff) {
+-				pr_err("Phy detected at"
+-				       " ID/ADDR %d\n", phyadr);
+-				phy_detected = 1;
+-				break;
+-			}
+-		} else if (phy_reg_read_status < 0) {
+-			pr_err("Error reading the phy register"
+-			       " MII_BMSR for phy ID/ADDR %d\n", phyadr);
+-		}
+-	}
+-
+-	if (!phy_detected) {
+-		mac_printf("XGMAC %d: No phy could be detected\n",
+-			   pdata->mac_idx);
++	mdio_np = of_get_child_by_name(pdata->dev->of_node, "mdio");
++	if (!mdio_np) {
++		dev_dbg(pdata->dev, "XGMAC %d: mdio node not found\n",
++			pdata->mac_idx);
+ 		return -ENOLINK;
+ 	}
+ 
+-	pdata->phyadr = phyadr;
+-	pdata->bus_id = 0x1;
+-
+-	dump_phy_registers(pdev);
+-
+ 	new_bus = mdiobus_alloc();
+-
+ 	if (!new_bus) {
+ 		mac_printf("XGMAC %d: Unable to allocate mdio bus\n",
+ 			   pdata->mac_idx);
+@@ -571,12 +544,16 @@ int xgmac_mdio_register(void *pdev)
+ 	new_bus->write = xgmac_mdio_write;
+ 	new_bus->reset = xgmac_mdio_reset;
+ 	snprintf(new_bus->id, MII_BUS_ID_SIZE, "%s-%x", new_bus->name,
+-		 pdata->bus_id);
++		 pdata->mac_idx);
+ 	new_bus->priv = pdev;
+-	new_bus->phy_mask = 0;
+ 	new_bus->parent = pdata->dev;
+-	ret = mdiobus_register(new_bus);
+ 
++	/* At this moment gphy is not yet up (firmware not yet loaded), so we
++	 * avoid auto mdio scan and rely on DT instead.
++	 */
++	new_bus->phy_mask = 0xFFFFFFFF;
++
++	ret = of_mdiobus_register(new_bus, mdio_np);
+ 	if (ret != 0) {
+ 		pr_err("%s: Cannot register as MDIO bus\n",
+ 		       new_bus->name);
+diff --git a/drivers/net/phy/lantiq.c b/drivers/net/phy/lantiq.c
+index ebf32b0a473f..98768d081e5a 100644
+--- a/drivers/net/phy/lantiq.c
++++ b/drivers/net/phy/lantiq.c
+@@ -203,6 +203,17 @@ static struct phy_driver lantiq_phy[] = {
+ 		.ack_interrupt	= vr9_gphy_ack_interrupt,
+ 		.did_interrupt	= vr9_gphy_did_interrupt,
+ 		.config_intr	= vr9_gphy_config_intr,
++	}, {
++		.phy_id		= 0x67c9dc00,
++		.phy_id_mask	= 0xfffffff0,
++		.name		= "Intel GPHY 31G",
++		.features	= (PHY_GBIT_FEATURES | SUPPORTED_Pause),
++		.flags		= PHY_HAS_INTERRUPT,
++		.config_init	= vr9_gphy_config_init,
++		.config_aneg	= vr9_gphy_config_aneg,
++		.read_status	= genphy_read_status,
++		.ack_interrupt	= vr9_gphy_ack_interrupt,
++		.config_intr	= vr9_gphy_config_intr,
+ 	},
+ };
+ 

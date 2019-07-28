@@ -1,0 +1,28 @@
+From 3ef725279e4c3a719901846787a998f78654fd6a Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 15 Aug 2018 04:56:42 +0200
+Subject: [PATCH] Merge pull request #121 in SW_UGW/linux from
+ feature/UGW_SW-29223-for-scatter-gathering-feature-speed-low-issue to master
+
+* commit 'c80c15b2af17edc0603741fb720e530145361d57':
+  fix speed low issue
+---
+ drivers/dma/intel/cdma.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/dma/intel/cdma.h b/drivers/dma/intel/cdma.h
+index 95660edf09b6..6f6afe4ba8b3 100755
+--- a/drivers/dma/intel/cdma.h
++++ b/drivers/dma/intel/cdma.h
+@@ -218,9 +218,9 @@
+ /** Default packet drop enabled for channel   */
+ #define DMA_DEF_CHAN_BASED_PKT_DROP_EN	0
+ /** Default Transmit burst length  */
+-#define DMA_PORT_DEFAULT_TX_BURST_LEN	IFX_DMA_BURSTL_2
++#define DMA_PORT_DEFAULT_TX_BURST_LEN	IFX_DMA_BURSTL_8
+ /** Default Receive burst length  */
+-#define DMA_PORT_DEFAULT_RX_BURST_LEN	IFX_DMA_BURSTL_2
++#define DMA_PORT_DEFAULT_RX_BURST_LEN	IFX_DMA_BURSTL_8
+ 
+ /** default enabled interrupts */
+ #define DMA_CIE_DEFAULT			(DMA_CIE_DESCPT | DMA_CIE_EOP)

@@ -1,0 +1,34 @@
+From b9328b1a08838c311880a5ce02607cea74344a31 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 26 Oct 2018 11:46:27 +0200
+Subject: [PATCH] Merge pull request #229 in SW_UGW/linux from
+ feature/UGW_SW-31143-8.x-images-pppoa-wan-isnt-supported to master
+
+* commit 'f02df38f27859aab1b09d1da8acd54e2e166fdb9':
+  UGW_SW-31143: Compilation fixes for PPPoA
+---
+ net/atm/pppoatm.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/net/atm/pppoatm.c b/net/atm/pppoatm.c
+index 95ea49c5db8b..a71435088996 100644
+--- a/net/atm/pppoatm.c
++++ b/net/atm/pppoatm.c
+@@ -95,7 +95,7 @@ enum {
+ 	PPA_PPPOA_CHECK_IFACE,
+ };
+ 
+-extern int32_t ppa_get_pppoa_info_fn(struct net_device *dev,
++extern int32_t (*ppa_get_pppoa_info_fn)(struct net_device *dev,
+ 		void *pvcc, uint32_t pppoa_id, void *value);
+ 
+ static int get_pppoa_info(struct net_device *dev, void *pvcc,
+@@ -111,7 +111,7 @@ static int get_pppoa_info(struct net_device *dev, void *pvcc,
+ 		return -1;
+ 
+ 	switch (pppoa_id) {
+-	case PPA_PPPOA_GET_VC:
++	case PPA_PPPOA_GET_VCC:
+ 		*patmvcc = p_atm_vcc->atmvcc;
+ 		break;
+ 	default:

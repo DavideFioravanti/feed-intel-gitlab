@@ -1,0 +1,37 @@
+From 5519e7bbb8858fa6f7d7ad3561dcb9c695df6cd4 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Thu, 13 Dec 2018 06:13:45 +0100
+Subject: [PATCH] Merge pull request #304 in SW_UGW/linux from
+ bugfix/PONRTSYS-2687-tcpdump-does-not-work-on-pmapper-and-gem-network-devices
+ to master
+
+* commit 'b3367ed750f369d7a61afcf3169166afcfbacf54':
+  PONRTSYS-2687 : Resolve tcpdump fail issue
+---
+ drivers/net/ethernet/lantiq/datapath/datapath_ioctl.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/datapath_ioctl.c b/drivers/net/ethernet/lantiq/datapath/datapath_ioctl.c
+index 7e75fe128898..52d64c277d34 100644
+--- a/drivers/net/ethernet/lantiq/datapath/datapath_ioctl.c
++++ b/drivers/net/ethernet/lantiq/datapath/datapath_ioctl.c
+@@ -10,13 +10,16 @@ static int get_tsinfo(struct net_device *dev,
+ 		      struct ethtool_ts_info *ts_info)
+ {
+ 	struct mac_ops *ops;
+-	struct pmac_port_info *port = get_port_info_via_dp_name(dev);
++	dp_subif_t subif = {0};
+ 	int inst = 0;
+ 	int err = 0;
+ 
+-	if (!port)
++	if (dp_get_netif_subifid(dev, NULL, NULL, NULL, &subif, 0)) {
++		PR_ERR("%s dp_get_netif_subifid failed for %s\n",
++				__func__, dev->name);
+ 		return -EFAULT;
+-	ops = dp_port_prop[inst].mac_ops[port->port_id];
++	}
++	ops = dp_port_prop[inst].mac_ops[subif.port_id];
+ 	if (!ops)
+ 		return -EFAULT;
+ 	err = ops->mac_get_ts_info(ops, ts_info);

@@ -1,0 +1,13 @@
+Index: lib_ifxos-1.6.9/src/linux/ifxos_linux_socket_drv.c
+===================================================================
+--- lib_ifxos-1.6.9.orig/src/linux/ifxos_linux_socket_drv.c
++++ lib_ifxos-1.6.9/src/linux/ifxos_linux_socket_drv.c
+@@ -192,7 +192,7 @@ IFX_int_t IFXOS_SocketRecvFrom(
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+ 
+-   ret = sock_recvmsg ((struct socket *) socFd, &msg, bufSize_byte, 0);
++   ret = sock_recvmsg ((struct socket *) socFd, &msg, 0);
+    set_fs(old_fs);
+ 
+    return ret;

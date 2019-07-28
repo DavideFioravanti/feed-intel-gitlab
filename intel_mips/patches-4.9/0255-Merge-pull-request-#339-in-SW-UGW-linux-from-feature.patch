@@ -1,0 +1,40 @@
+From a3be08a9f0cace450f72828a6a7b820758c37ee8 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 28 Dec 2018 10:40:43 +0100
+Subject: [PATCH] Merge pull request #339 in SW_UGW/linux from
+ feature/PONRTSYS-2170-dp-extvlan-setup-of-dscp-to-p-bit-map to master
+
+* commit '70174d6e74814ebb43adce8327e43c4884484cb0':
+  PONRTSYS-2170: DSCP to P-bit map from DP Review comment
+  PONRTSYS-2170: DSCP to P-bit map from DP
+---
+ drivers/net/ethernet/lantiq/datapath/gswip31/datapath_tc_asym_vlan.c | 3 +++
+ include/net/datapath_api_vlan.h                                      | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_tc_asym_vlan.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_tc_asym_vlan.c
+index 155947eadaeb..7c9cbb792210 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_tc_asym_vlan.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_tc_asym_vlan.c
+@@ -586,6 +586,9 @@ static int ext_vlan_action_cfg(struct core_ops *ops,
+ 
+ 	DP_DEBUG(DP_DBG_FLAG_PAE, "act->act: 0x%02x\n", (unsigned int)act->act);
+ 
++	/* Copy DSCP table */
++	memcpy(pcfg->nDscp2PcpMap, act->dscp_pcp_map,
++	       sizeof(pcfg->nDscp2PcpMap));
+ 	/* forward without modification */
+ 	if ((act->act & DP_VLAN_ACT_FWD))
+ 		return 0;
+diff --git a/include/net/datapath_api_vlan.h b/include/net/datapath_api_vlan.h
+index f88511cc89cd..6b5937203fa0 100644
+--- a/include/net/datapath_api_vlan.h
++++ b/include/net/datapath_api_vlan.h
+@@ -91,6 +91,7 @@ struct dp_act_vlan {
+ 				*  copy from recv pkt's inner tag(CP_FROM_INNER)
+ 				*  copy from recv pkt's outer tag(CP_FROM_OUTER)
+ 				*/
++	unsigned char dscp_pcp_map[64]; /* DSCP to P-bit mapping table */
+ };
+ 
+ #define DP_VLAN_DEF_RULE 1

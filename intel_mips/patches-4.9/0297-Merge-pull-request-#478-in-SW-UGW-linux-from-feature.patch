@@ -1,0 +1,24 @@
+From 5f8a3f8e108df3a52eb133f7ffeee03ffb8e662e Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 13 Feb 2019 16:32:16 +0100
+Subject: [PATCH] Merge pull request #478 in SW_UGW/linux from
+ feature/PONRTSYS-2726-support-color-marking-action-in-netlink_filter_add2 to
+ master
+
+* commit 'f36ee9c56db95b8b8e570a6afec0daf9f754c93e':
+  uapi: linux: add tc_colmark.h to exported headers
+---
+ include/uapi/linux/tc_act/Kbuild | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/include/uapi/linux/tc_act/Kbuild b/include/uapi/linux/tc_act/Kbuild
+index e3db7403296f..935518f8887f 100644
+--- a/include/uapi/linux/tc_act/Kbuild
++++ b/include/uapi/linux/tc_act/Kbuild
+@@ -1,5 +1,6 @@
+ # UAPI Header export list
+ header-y += tc_csum.h
++header-y += tc_colmark.h
+ header-y += tc_defact.h
+ header-y += tc_gact.h
+ header-y += tc_ipt.h

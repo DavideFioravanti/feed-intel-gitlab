@@ -1,0 +1,51 @@
+/dts-v1/;
+#include "falconmx_haps.dtsi"
+
+/ {
+	model = "FalconMX HAPS SPI NOR model";
+	compatible = "intel,falconmx_haps_spi_nor", "intel,falconmx";
+};
+
+/******************************************************************************
+** Model configuration: Enable SSC0 to support standard SPI devices (SPI Flash)
+** The MX25L3233F is backward compatible with the MX25L3205D as it is pin and
+** command compatible with the basic Read/Program/Erase commands.
+** There may be some differences if special features are used such as using QPI
+** mode commands, Write Protection, or CP mode programming.
+******************************************************************************/
+&ssc0 {
+	m25p80@1 {
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "mx25l25635e";
+		reg = <1>;
+		linux,modalias = "m25p80", " mx25l25635e";
+		spi-max-frequency = <2000000>;
+
+		/* Basic fallback partition layout. Real partition should be
+		 * defined in kernel boot parameters by uboot.
+		 */
+		partition@0 {
+			reg = <0x0 0x40000>;
+			label = "uboot";
+			read-only;
+		};
+
+		partition@40000 {
+			reg = <0x40000 0x80000>;
+			label = "uboot_env";
+		};
+
+		partition@C0000 {
+			reg = <0xC0000 0x740000>;
+			label = "image0";
+		};
+
+		partition@800000 {
+			reg = <0x800000 0x800000>;
+			label = "image1";
+		};
+	};
+};
+

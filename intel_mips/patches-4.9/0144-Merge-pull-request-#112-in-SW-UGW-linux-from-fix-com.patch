@@ -1,0 +1,32 @@
+From 94b2aafe1d15b4bdff675c2a9912c023ac9d73af Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 8 Aug 2018 17:58:25 +0200
+Subject: [PATCH] Merge pull request #112 in SW_UGW/linux from
+ fix/compile_testptp_without_glibc to master
+
+* commit '674f8bd16a98770449130798da1cc06a03d0f9d8':
+  selftest:ptp: Make testptp.c compilable on machines without glibc
+---
+ tools/testing/selftests/ptp/testptp.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tools/testing/selftests/ptp/testptp.c b/tools/testing/selftests/ptp/testptp.c
+index 5d2eae16f7ee..94dc235d9038 100644
+--- a/tools/testing/selftests/ptp/testptp.c
++++ b/tools/testing/selftests/ptp/testptp.c
+@@ -48,6 +48,7 @@
+ #define CLOCK_INVALID -1
+ #endif
+ 
++#if defined(__GLIBC__) && defined(__GLIBC_PREREQ)
+ /* clock_adjtime is not available in GLIBC < 2.14 */
+ #if !__GLIBC_PREREQ(2, 14)
+ #include <sys/syscall.h>
+@@ -56,6 +57,7 @@ static int clock_adjtime(clockid_t id, struct timex *tx)
+ 	return syscall(__NR_clock_adjtime, id, tx);
+ }
+ #endif
++#endif
+ 
+ static clockid_t get_clockid(int fd)
+ {

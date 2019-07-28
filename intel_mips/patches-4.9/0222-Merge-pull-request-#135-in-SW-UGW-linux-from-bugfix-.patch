@@ -1,0 +1,26 @@
+From eb344f516e0372d8ad13deeebddd3efaaca6267b Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 12 Nov 2018 13:08:18 +0100
+Subject: [PATCH] Merge pull request #135 in SW_UGW/linux from
+ bugfix/UGW_SW-27656-8.x-dut-is-hung-and-observed-call-trace-while-running-the-automation
+ to master
+
+* commit '8628f68c5040f23eee91012a97c3f5230edb6aed':
+  UGW_SW-27656: Fix for multicast crash while runninig automaton - Master Branch
+---
+ net/mcast_helper/mcast_helper.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/net/mcast_helper/mcast_helper.c b/net/mcast_helper/mcast_helper.c
+index 4a45095cc3ec..cf7cb25d1384 100644
+--- a/net/mcast_helper/mcast_helper.c
++++ b/net/mcast_helper/mcast_helper.c
+@@ -1598,6 +1598,8 @@ static long mcast_helper_ioctl(struct file *f, unsigned int cmd, unsigned long a
+ 			netdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.memIntrfName);
+ 			rxnetdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.rxIntrfName);
+ #endif
++			if (rxnetdev == NULL || netdev == NULL)
++				return -ENXIO;
+ 
+ 			rtnl_lock();
+ 			upper_dev = netdev_master_upper_dev_get(rxnetdev);

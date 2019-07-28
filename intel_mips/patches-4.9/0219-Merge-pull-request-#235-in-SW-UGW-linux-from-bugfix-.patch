@@ -1,0 +1,38 @@
+From 0756b60abe7bdf8208265c82c2129d10a040f691 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Sun, 4 Nov 2018 17:30:04 +0100
+Subject: [PATCH] Merge pull request #235 in SW_UGW/linux from
+ bugfix/UGW_SW-21178-support-scatter_gathering-on-grx500_DMABurstLength to
+ master
+
+* commit '4fcfd2818c6b968c5513742919160941c02348cd':
+  fix editor issue, change space to TAB
+  fix SPI NOR flash issue
+---
+ drivers/dma/intel/cdma.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/dma/intel/cdma.c b/drivers/dma/intel/cdma.c
+index 1612a1c46a09..1963b68c7432 100755
+--- a/drivers/dma/intel/cdma.c
++++ b/drivers/dma/intel/cdma.c
+@@ -533,6 +533,9 @@ int dma_device_register(_dma_device_info *dev)
+ 	case DMA_BURSTL_4DW:
+ 		txbl = IFX_DMA_BURSTL_4;
+ 		break;
++	case DMA_BURSTL_2DW:
++		txbl = IFX_DMA_BURSTL_2;
++		break;
+ 	default:
+ 		txbl = DMA_PORT_DEFAULT_TX_BURST_LEN;
+ 	}
+@@ -543,6 +546,9 @@ int dma_device_register(_dma_device_info *dev)
+ 	case DMA_BURSTL_4DW:
+ 		rxbl = IFX_DMA_BURSTL_4;
+ 		break;
++	case DMA_BURSTL_2DW:
++		rxbl = IFX_DMA_BURSTL_2;
++	break;
+ 	default:
+ 		rxbl = DMA_PORT_DEFAULT_RX_BURST_LEN;
+ 	}

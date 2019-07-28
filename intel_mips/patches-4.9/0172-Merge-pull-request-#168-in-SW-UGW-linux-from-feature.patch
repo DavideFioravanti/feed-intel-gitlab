@@ -1,0 +1,26 @@
+From 9f78805104b26c2361cf17fdd6da714eea19d083 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 10 Sep 2018 19:52:09 +0200
+Subject: [PATCH] Merge pull request #168 in SW_UGW/linux from
+ feature/PMCPESYS-76-fm-enable-the-cpufreq-driver-on-the-falcon-mountain-platform
+ to master
+
+* commit '2ccc0e80928885b32067d45ec9792dba1d812d2b':
+  PMCPESYS-76: cpufreq: Add Falcon Mtn plat to cpufreq-dt driver
+---
+ drivers/cpufreq/cpufreq-dt-platdev.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/cpufreq/cpufreq-dt-platdev.c b/drivers/cpufreq/cpufreq-dt-platdev.c
+index 71267626456b..2b7727ad926c 100644
+--- a/drivers/cpufreq/cpufreq-dt-platdev.c
++++ b/drivers/cpufreq/cpufreq-dt-platdev.c
+@@ -28,6 +28,8 @@ static const struct of_device_id machines[] __initconst = {
+ 
+ 	{ .compatible = "hisilicon,hi6220", },
+ 
++	{ .compatible = "intel,falconmx", },
++
+ 	{ .compatible = "fsl,imx27", },
+ 	{ .compatible = "fsl,imx51", },
+ 	{ .compatible = "fsl,imx53", },

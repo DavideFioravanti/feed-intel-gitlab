@@ -1,0 +1,25 @@
+From c3639a051b20c321791bdb3133a53b5b7f6c1050 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 4 Feb 2019 16:29:18 +0100
+Subject: [PATCH] Merge pull request #453 in SW_UGW/linux from
+ bugfix/PONRTSYS-2771-qos-mgr-db-cleanup-fix to master
+
+* commit '4ffabb4efed4183a9107a870a3a1d16760057675':
+  PONRTSYS-2771 fix for build failure due to signature mismatch
+---
+ include/net/ppa/ppa_api.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/net/ppa/ppa_api.h b/include/net/ppa/ppa_api.h
+index 9cf2f77d1ab8..5e3f86cc6036 100644
+--- a/include/net/ppa/ppa_api.h
++++ b/include/net/ppa/ppa_api.h
+@@ -1000,7 +1000,7 @@ int32_t ppa_hook_get_bridge_status(uint32_t *f_enable, uint32_t flags);
+ int32_t ppa_get_if_stats(PPA_IFNAME *, PPA_IF_STATS *, uint32_t);
+ int32_t ppa_get_accel_stats(PPA_IFNAME *, PPA_ACCEL_STATS *, uint32_t);
+ #if defined(PPA_IF_MIB) && PPA_IF_MIB
+-int32_t ppa_get_netif_accel_stats(PPA_IFNAME *, PPA_NETIF_ACCEL_STATS *, uint32_t);
++int32_t ppa_get_netif_accel_stats(PPA_IFNAME *, PPA_NETIF_ACCEL_STATS *, uint32_t, struct rtnl_link_stats64 *);
+ #endif
+ int32_t ppa_hook_set_ppe_fastpath_enable(uint32_t f_enable, uint32_t flags);
+ int32_t ppa_hook_get_ppe_fastpath_enable(uint32_t *f_enable, uint32_t flags);

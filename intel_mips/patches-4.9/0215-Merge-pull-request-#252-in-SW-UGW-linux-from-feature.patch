@@ -1,0 +1,26 @@
+From 0beeddea83be9a2e23a318e8faa648c755c9e897 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 30 Oct 2018 10:03:41 +0100
+Subject: [PATCH] Merge pull request #252 in SW_UGW/linux from
+ feature/UGW_SW-32239-Fix-linux-ethtool.h-wsign-compare to master
+
+* commit '693cb7b5f3022034cdfcbb41e21d5ad8d92b68b6':
+  UGW_SW-32239: Addressing review comment, type cast the constant variable with __u32 type
+  UGW_SW-32239: Fix for -Wsign-compare warning in userspace for including ethtool.h. It leads to compilation error when combining with -Werror
+---
+ include/uapi/linux/ethtool.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/uapi/linux/ethtool.h b/include/uapi/linux/ethtool.h
+index 5c22e8cab24b..58a9a4b205d1 100644
+--- a/include/uapi/linux/ethtool.h
++++ b/include/uapi/linux/ethtool.h
+@@ -1488,7 +1488,7 @@ enum ethtool_link_mode_bit_indices {
+ 
+ static inline int ethtool_validate_speed(__u32 speed)
+ {
+-	return speed <= INT_MAX || speed == SPEED_UNKNOWN;
++	return speed <= INT_MAX || speed == (__u32)SPEED_UNKNOWN;
+ }
+ 
+ /* Duplex, half or full. */

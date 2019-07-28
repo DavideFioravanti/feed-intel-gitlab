@@ -1,0 +1,58 @@
+#include <dt-bindings/interrupt-controller/mips-gic.h>
+#include <dt-bindings/clock/intel,falconmx-clk.h>
+#include <dt-bindings/pinctrl/intel,equilibrium.h>
+/*****************************************************************
+** Include a chip configuration file
+*****************************************************************/
+#include "falconmx.dtsi"
+/*****************************************************************
+** Include a board configuration file
+*****************************************************************/
+#include "falconmx_bc.dtsi"
+
+/ {
+	model = "FalconMX HAPS Main model";
+/*
+	chosen {
+		bootargs = "earlycon=lantiq,0x16380000 console=ttyLTQ0,9600 root=/dev/ram panic=1 init=/etc/preinit maxcpus=1 nocoherentio clk_ignore_unused mem=96M@512M";
+		stdout-path = "serial0";
+	};
+*/
+	memory@0 {
+		device_type = "memory";
+		reg = <0x20000000 0x06000000>;
+	};
+};
+
+&pon_eth {
+	intel,with-fcs;
+};
+
+&osc0 {
+	clock-frequency = <1200000>;
+};
+
+/* I2C baud-rate is lowered down due to read/write issue in HAPS */
+&i2c0 {
+	clock-frequency = <5000>;
+};
+
+&cqm {
+	intel,bm-buff-num = <0x80 0x80 0x80 0x80>;
+	intel,bm-buff-size = <0x800 0x800 0x800 0x800>;
+	/* even when we are in PON mode use the XPCS */
+	intel,force-xpcs;
+};
+
+
+&gsw_mac0 {
+	board_type = "HAPS";
+};
+
+&gsw_mac1 {
+	board_type = "HAPS";
+};
+
+&gsw_mac2 {
+	board_type = "HAPS";
+};

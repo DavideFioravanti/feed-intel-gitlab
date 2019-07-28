@@ -1,0 +1,143 @@
+From 0e9cc44a4fb7dd8ab97c4938ac6e494e63b2e25d Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 25 Jan 2019 00:41:53 +0100
+Subject: [PATCH] Merge pull request #390 in SW_UGW/linux from
+ bugfix/PONRTSYS-3009-fix-fail-to-get-the-subif-problem-in-dp_set_pmapper to
+ master
+
+* commit 'eec508643da58b9fdc206f410a091e2b07909091':
+  fix to solve pmapper error in DP
+  PONRTSYS-3009: Fix pmapper error message subif condition check
+---
+ .../net/ethernet/lantiq/datapath/datapath_api.c    | 29 +++++++++++++++-------
+ .../net/ethernet/lantiq/datapath/datapath_misc.c   | 20 +++++++--------
+ 2 files changed, 30 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/datapath_api.c b/drivers/net/ethernet/lantiq/datapath/datapath_api.c
+index f4923a746b56..3428cf4e7de3 100644
+--- a/drivers/net/ethernet/lantiq/datapath/datapath_api.c
++++ b/drivers/net/ethernet/lantiq/datapath/datapath_api.c
+@@ -923,6 +923,7 @@ int32_t dp_register_subif_ext(int inst, struct module *owner,
+ 	int port_id, f_subif = -1;
+ 	struct pmac_port_info *port_info;
+ 	struct dp_subif_data tmp_data = {0};
++	dp_subif_t *subif_id_sync;
+ 	dp_get_netif_subifid_fn_t subifid_fn_t = NULL;
+ 
+ 	if (unlikely(!dp_init_ok)) {
+@@ -999,12 +1000,21 @@ int32_t dp_register_subif_ext(int inst, struct module *owner,
+ 					  subif_id, data, flags);
+ 	if (!(flags & DP_F_SUBIF_LOGICAL))
+ 		subifid_fn_t = port_info->cb.get_subifid_fn;
+-	dp_sync_subifid(dev, subif_name, subif_id, data, flags, &f_subif);
++	
++	subif_id_sync = kmalloc(sizeof(*subif_id_sync) * 2, GFP_KERNEL);
++	if (!subif_id_sync) {
++		PR_ERR("Failed to alloc %d bytes\n",
++		       sizeof(*subif_id_sync) * 2);
++		return DP_FAILURE;
++	}
++	memcpy(&subif_id_sync[0], subif_id, sizeof(dp_subif_t));
++	memcpy(&subif_id_sync[1], subif_id, sizeof(dp_subif_t));
++	dp_sync_subifid(dev, subif_name, subif_id_sync, data, flags, &f_subif);
+ 	DP_LIB_UNLOCK(&dp_lock);
+ 	if (!res)
+-		dp_sync_subifid_priv(dev, subif_name, subif_id, data, flags,
+-				     subifid_fn_t, &f_subif);
+-
++		dp_sync_subifid_priv(dev, subif_name, subif_id_sync, data,
++				     flags, subifid_fn_t, &f_subif);
++	kfree(subif_id_sync);
+ 	return res;
+ }
+ EXPORT_SYMBOL(dp_register_subif_ext);
+@@ -1198,8 +1208,9 @@ int32_t dp_get_netif_subifid_priv(struct net_device *netif, struct sk_buff *skb,
+ 					subif_flag[num] = PORT_SUBIF(inst, k, i,
+ 								subif_flag);
+ 					if (dp_port_info[inst][k].subif_info[i].
+-						ctp_dev)
++						ctp_dev) {
+ 						subif->flag_pmapper = 1;
++					}
+ 					bport = PORT_SUBIF(inst, k, i, bp);
+ 					if (num &&
+ 					    (bport != dp_port_info[inst][k].
+@@ -1634,9 +1645,9 @@ int dp_set_pmapper(struct net_device *dev, struct dp_pmapper *mapper, u32 flag)
+ 	}
+ 	/* get the subif from the dev */
+ 	ret = dp_get_netif_subifid(dev, NULL, NULL, NULL, &subif, 0);
+-	if ((ret == DP_FAILURE) || (subif.flag_bp == 0)) {
+-		PR_ERR("Fail to get the subif:dev=%s ret=%d flag_bp=%d bp=%d\n",
+-		       dev->name, ret, subif.flag_bp, subif.bport);
++	if ((ret == DP_FAILURE) || (subif.flag_pmapper == 0)) {
++		PR_ERR("Fail to get subif:dev=%s ret=%d flag_pmap=%d bp=%d\n",
++		       dev->name, ret, subif.flag_pmapper, subif.bport);
+ 		return DP_FAILURE;
+ 	}
+ 	inst = subif.inst;
+@@ -1720,7 +1731,7 @@ int dp_get_pmapper(struct net_device *dev, struct dp_pmapper *mapper, u32 flag)
+ 
+ 	/*get the subif from the dev*/
+ 	ret = dp_get_netif_subifid(dev, NULL, NULL, NULL, &subif, 0);
+-	if (ret == DP_FAILURE || subif.flag_bp == 0) {
++	if (ret == DP_FAILURE || subif.flag_pmapper == 0) {
+ 		PR_ERR("Can not get the subif from the dev\n");
+ 		return DP_FAILURE;
+ 	}
+diff --git a/drivers/net/ethernet/lantiq/datapath/datapath_misc.c b/drivers/net/ethernet/lantiq/datapath/datapath_misc.c
+index d0aa6efddad4..620b30180c33 100644
+--- a/drivers/net/ethernet/lantiq/datapath/datapath_misc.c
++++ b/drivers/net/ethernet/lantiq/datapath/datapath_misc.c
+@@ -1351,20 +1351,20 @@ int32_t dp_sync_subifid(struct net_device *dev, char *subif_name,
+ 	if (flags & DP_F_DEREGISTER) {
+ 
+ 		if (dp_get_netif_subifid_priv(dev, NULL, subif_data, NULL,
+-					      subif_id, 0))
++					      &subif_id[0], 0))
+ 			*f_subif_up = 0;
+ 		else
+ 			*f_subif_up = 1;
+ 	} else {
+ 		if (dp_get_netif_subifid_priv(dev, NULL, subif_data,
+-					      NULL, subif_id, 0)) {
++					      NULL, &subif_id[0], 0)) {
+ 			PR_ERR("DP subif synchronization fail\n");
+ 			return DP_FAILURE;
+ 		}
+ 		if (data->ctp_dev) {
+ 			if (dp_get_netif_subifid_priv(data->ctp_dev, NULL,
+ 						      subif_data, NULL,
+-						      subif_id, 0))
++						      &subif_id[1], 0))
+ 				return DP_FAILURE;
+ 		}
+ 		*f_subif_up = 1;
+@@ -1390,21 +1390,21 @@ int32_t dp_sync_subifid_priv(struct net_device *dev, char *subif_name,
+ 	/*check flag for register / deregister to update/del */
+ 	if (flags & DP_F_DEREGISTER) {
+ 		if (data->ctp_dev)
+-			dp_del_subif(data->ctp_dev, subif_data, subif_id,
++			dp_del_subif(data->ctp_dev, subif_data, &subif_id[1],
+ 				     NULL, flags);
+ 
+ 		if (*f_subif_up == 0)
+-			dp_del_subif(dev, subif_data, subif_id, subif_name,
++			dp_del_subif(dev, subif_data, &subif_id[0], subif_name,
+ 				     flags);
+ 		else if (*f_subif_up == 1)
+-			dp_update_subif(dev, subif_data, subif_id, subif_name,
+-					flags, subifid_fn);
++			dp_update_subif(dev, subif_data, &subif_id[0],
++					subif_name, flags, subifid_fn);
+ 	} else {
+ 		if (*f_subif_up == 1) {
+-			dp_update_subif(dev, subif_data, subif_id, subif_name,
+-					flags, subifid_fn);
++			dp_update_subif(dev, subif_data, &subif_id[0],
++					subif_name, flags, subifid_fn);
+ 		if (data->ctp_dev)
+-			dp_update_subif(data->ctp_dev, subif_data, subif_id,
++			dp_update_subif(data->ctp_dev, subif_data, &subif_id[1],
+ 					NULL, flags, subifid_fn);
+ 		}
+ 	}

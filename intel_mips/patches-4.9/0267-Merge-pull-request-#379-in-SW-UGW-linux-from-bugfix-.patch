@@ -1,0 +1,25 @@
+From 8f7dc1cc0c35460283a01acb46d09742abcdc40c Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 9 Jan 2019 06:09:50 +0100
+Subject: [PATCH] Merge pull request #379 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-1104-falcon_mountain-update-bootstrap-for-2.5gphy-in-p31g-phy-driver
+ to master
+
+* commit 'dbee3f8f629bd0a07b9f1e0fe2c55627e0f3b274':
+  DRVLIB_SW-1104 - Add chipid to gphy pinstrap register
+---
+ drivers/net/ethernet/lantiq/xrx500_phy_fw.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/ethernet/lantiq/xrx500_phy_fw.c b/drivers/net/ethernet/lantiq/xrx500_phy_fw.c
+index 239f1dfeb2c7..82970cef3526 100644
+--- a/drivers/net/ethernet/lantiq/xrx500_phy_fw.c
++++ b/drivers/net/ethernet/lantiq/xrx500_phy_fw.c
+@@ -319,6 +319,7 @@ static int prx300_gphy_boot(struct xway_gphy_data *priv)
+ 			   priv->dma_addr);
+ 
+ 	pin_strap_lo = 0x4000; /* base freq deviation */
++	pin_strap_lo |= 0xd << 16; /* chip id */
+ 	pin_strap_lo |= 0x1f << 24; /* MDIO address */
+ 	pin_strap_lo |= 0x1 << 29; /* interrupt polarity */
+ 	pin_strap_hi = prx300_gphy_config_rcal_rcm(priv);

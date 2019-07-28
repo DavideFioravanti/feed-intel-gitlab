@@ -1,0 +1,30 @@
+From 2e18f043aa85a11f8a7db7e86c846bae2168212d Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 17 Sep 2018 14:07:12 +0200
+Subject: [PATCH] Merge pull request #141 in SW_UGW/linux from
+ UGW_SW-29121-enabling-fibocom-l830-eb-on-ugw_8.x_v2 to master
+
+* commit '6f9a81de3b96c891b172ba096f5e91a6edc744d1':
+  enable Fibocom L830-EB module
+---
+ drivers/net/usb/cdc_ncm.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/net/usb/cdc_ncm.c b/drivers/net/usb/cdc_ncm.c
+index fbc93ae62ba4..89fdd3ae162b 100644
+--- a/drivers/net/usb/cdc_ncm.c
++++ b/drivers/net/usb/cdc_ncm.c
+@@ -1783,6 +1783,13 @@ static const struct usb_device_id cdc_devs[] = {
+ 	  .driver_info = (unsigned long)&wwan_noarp_info,
+ 	},
+ 
++	/* Fibocom L830-EB LTE Modem platform */
++	{ USB_DEVICE_AND_INTERFACE_INFO(0x2cb7, 0x000b,
++		USB_CLASS_COMM,
++		USB_CDC_SUBCLASS_NCM, USB_CDC_PROTO_NONE),
++	  .driver_info = (unsigned long)&wwan_noarp_info,
++	},
++
+ 	/* Generic CDC-NCM devices */
+ 	{ USB_INTERFACE_INFO(USB_CLASS_COMM,
+ 		USB_CDC_SUBCLASS_NCM, USB_CDC_PROTO_NONE),

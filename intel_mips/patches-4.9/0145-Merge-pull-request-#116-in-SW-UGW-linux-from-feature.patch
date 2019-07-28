@@ -1,0 +1,39 @@
+From d23830b798b36c2b3488241287caf02c3ba5ae6a Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 14 Aug 2018 13:19:46 +0200
+Subject: [PATCH] Merge pull request #116 in SW_UGW/linux from
+ feature/add-1V8-nand-flashes to master
+
+* commit '03c94ef045a4d66bdaafe1e443158272e930303e':
+  Add some more SPI NAND flash chips
+---
+ drivers/mtd/ltq-spinand/ltq_spinand.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/mtd/ltq-spinand/ltq_spinand.c b/drivers/mtd/ltq-spinand/ltq_spinand.c
+index 1f36b91ba2bc..a9c8fe680670 100644
+--- a/drivers/mtd/ltq-spinand/ltq_spinand.c
++++ b/drivers/mtd/ltq-spinand/ltq_spinand.c
+@@ -125,6 +125,9 @@ struct nand_flash_dev spinand_flash_ids[] = {
+ 		 LP_OPTIONS | SPINAND_NEED_PLANE_SELECT, 2, 64},
+ 	{"SPI NAND MT29F1G01ABB 1Gbit",
+ 		{ .id = {0x2c, 0x15} }, 2048, 128, 0x20000, LP_OPTIONS, 2, 128},
++	{"SPI NAND MT29F2G01ABBG 2Gbit 1,8v",
++		{ .id = {0x2c, 0x25} }, 2048, 256, 0x20000,
++		 LP_OPTIONS | SPINAND_NEED_PLANE_SELECT, 2, 64},
+ 	{"SPI NAND TC58CVG0S3 1Gbit",
+ 		{ .id = {0x98, 0xc2} }, 2048, 128, 0x20000, LP_OPTIONS, 2, 64},
+ 	{"SPI NAND TC58CVG1S3 2Gbit",
+@@ -136,6 +139,12 @@ struct nand_flash_dev spinand_flash_ids[] = {
+ 	{"SPI NAND MX35LFE4AB 2Gbit",
+ 		{ .id = {0xc2, 0x22} }, 2048, 256, 0x20000,
+ 		 LP_OPTIONS | SPINAND_NEED_PLANE_SELECT, 2, 64},
++	{"SPI NAND 1Gbit 3,3v WN25N01GV",
++		{ .id = {0xef, 0xaa} }, 2048, 128, 0x20000, LP_OPTIONS, 2, 64},
++	{"SPI NAND 1Gbit 1,8v WN25N01GW",
++		{ .id = {0xef, 0xba} }, 2048, 128, 0x20000, LP_OPTIONS, 2, 64},
++	{"SPI NAND 2Gbit 3,3v WN25M02GV",
++		{ .id = {0xef, 0xab} }, 2048, 256, 0x20000, LP_OPTIONS, 2, 64},
+ };
+ #if 0
+ /**

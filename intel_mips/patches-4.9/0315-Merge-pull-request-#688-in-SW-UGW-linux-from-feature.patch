@@ -1,0 +1,129 @@
+From 7acdc4a7f7c4212fd986db1626b5ae801740e911 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 29 Apr 2019 07:47:43 +0200
+Subject: [PATCH] Merge pull request #688 in SW_UGW/linux from
+ feature/UGW_SW-38169-port-trunking-merging-the-changes-to-8.3.1-and-8.x to
+ 8.3.1
+
+* commit '1693d966c07509590ba4e446d6f32defdbf830bf':
+  UGW_SW-38169-port-trunking-merging-the-changes-to-8.3.1-and-8.x
+---
+ drivers/net/bonding/bond_main.c            | 43 ++++++++++++++++++++++++++++++
+ drivers/net/ethernet/lantiq/ppa/ppa_hook.c |  2 ++
+ include/net/ppa/ppa_hook.h                 |  5 ++++
+ 3 files changed, 50 insertions(+)
+
+Index: linux-4.9.184/drivers/net/bonding/bond_main.c
+===================================================================
+--- linux-4.9.184.orig/drivers/net/bonding/bond_main.c
++++ linux-4.9.184/drivers/net/bonding/bond_main.c
+@@ -218,8 +218,16 @@ static bool bond_time_in_interval(struct
+ 				  int mod);
+ static void bond_netdev_notify_work(struct work_struct *work);
+ 
++struct net_device * ppa_get_bond_xmit_xor_intrf(struct sk_buff *skb, struct net_device *bond_dev);
++extern struct net_device* (*ppa_get_bond_xmit_xor_intrf_fn)(struct sk_buff *skb, struct net_device *bond_dev);
++
+ /*---------------------------- General routines -----------------------------*/
+ 
++#define IS_UP(dev)                                         \
++              ((((dev)->flags & IFF_UP) == IFF_UP)      && \
++               netif_running(dev)                       && \
++               netif_carrier_ok(dev))
++
+ const char *bond_mode_name(int mode)
+ {
+ 	static const char *names[] = {
+@@ -4794,6 +4802,7 @@ static int __init bonding_init(void)
+ 			goto err;
+ 	}
+ 
++	ppa_get_bond_xmit_xor_intrf_fn = ppa_get_bond_xmit_xor_intrf;
+ 	register_netdevice_notifier(&bond_netdev_notifier);
+ out:
+ 	return res;
+@@ -4801,6 +4810,7 @@ err:
+ 	bond_destroy_debugfs();
+ 	bond_netlink_fini();
+ err_link:
++	ppa_get_bond_xmit_xor_intrf_fn = NULL;
+ 	unregister_pernet_subsys(&bond_net_ops);
+ 	goto out;
+ 
+@@ -4821,6 +4831,41 @@ static void __exit bonding_exit(void)
+ #endif
+ }
+ 
++/*
++ * In ppa_get_bond_xmit_xor_intrf() , we determine the output device by using a pre-
++ * determined xmit_hash_policy(), If the selected device is not enabled,
++ * find the next active slave.
++ */
++struct net_device * ppa_get_bond_xmit_xor_intrf(struct sk_buff *skb, struct net_device *bond_dev)
++{
++	struct bonding *bond = netdev_priv(bond_dev);
++	struct slave *slave;
++	struct bond_up_slave *slaves;
++	unsigned int count;
++	slaves = rcu_dereference(bond->slave_arr);
++	count = slaves ? ACCESS_ONCE(slaves->count) : 0;
++	if (likely(count)) {
++		slave = slaves->arr[bond_xmit_hash(bond, skb) % count];
++	} else {
++		printk("slaves count is zero\n");
++		goto ret;
++	}
++
++	if (!slave) {
++		printk("slave is null\n");
++		goto ret;
++	}
++	if (slave->dev) {
++	        if (IS_UP(slave->dev) &&
++               (slave->link == BOND_LINK_UP) &&
++		bond_is_active_slave(slave)) {
++		  return slave->dev;
++                }
++	}
++ret:
++       return NULL;
++}
++EXPORT_SYMBOL(ppa_get_bond_xmit_xor_intrf);
+ module_init(bonding_init);
+ module_exit(bonding_exit);
+ MODULE_LICENSE("GPL");
+Index: linux-4.9.184/drivers/net/ethernet/lantiq/ppa/ppa_hook.c
+===================================================================
+--- linux-4.9.184.orig/drivers/net/ethernet/lantiq/ppa/ppa_hook.c
++++ linux-4.9.184/drivers/net/ethernet/lantiq/ppa/ppa_hook.c
+@@ -380,6 +380,7 @@ int32_t (*ppa_if_is_ipoa_fn)(struct net_
+ int32_t (*ppa_if_is_br2684_fn)(struct net_device *netdev, char *ifname) = NULL;
+ int32_t (*ppa_br2684_get_vcc_fn)(struct net_device *netdev, struct atm_vcc **pvcc) = NULL;
+ int32_t (*ppa_if_ops_veth_xmit_fn)(struct net_device *dev) = NULL;
++struct net_device* (*ppa_get_bond_xmit_xor_intrf_fn)(struct sk_buff *skb, struct net_device *bond_dev) = NULL;
+ 
+ 
+ #if IS_ENABLED(CONFIG_PPA_QOS)
+@@ -522,6 +523,7 @@ EXPORT_SYMBOL(ppa_if_is_ipoa_fn);
+ EXPORT_SYMBOL(ppa_if_is_br2684_fn);
+ EXPORT_SYMBOL(ppa_br2684_get_vcc_fn);
+ EXPORT_SYMBOL(ppa_if_ops_veth_xmit_fn);
++EXPORT_SYMBOL(ppa_get_bond_xmit_xor_intrf_fn);
+ 
+ #if IS_ENABLED(CONFIG_PPA_QOS)
+ EXPORT_SYMBOL(ppa_hook_get_qos_qnum);
+Index: linux-4.9.184/include/net/ppa/ppa_hook.h
+===================================================================
+--- linux-4.9.184.orig/include/net/ppa/ppa_hook.h
++++ linux-4.9.184/include/net/ppa/ppa_hook.h
+@@ -790,5 +790,10 @@ extern int32_t ppa_check_if_netif_l2nat_
+ #endif
+ #endif /* CONFIG_L2NAT*/
+ #endif /*end of __KERNEL__*/
++#ifdef NO_DOXY
++extern struct net_device* (*ppa_get_bond_xmit_xor_intrf_fn)(struct sk_buff *skb, struct net_device *bond_dev);
++#else
++extern struct net_device* ppa_get_bond_xmit_xor_intrf_fn(struct sk_buff *skb, struct net_device *bond_dev);
++#endif
+ /* @} */
+ #endif  /*  __PPA_HOOK_H__20081103_1736__*/

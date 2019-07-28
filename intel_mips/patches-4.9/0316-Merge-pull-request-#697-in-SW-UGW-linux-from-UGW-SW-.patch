@@ -1,0 +1,24 @@
+From bf07e0ab69e117757e56d4f1d9cdabc7cf04eca2 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 29 Apr 2019 17:14:27 +0200
+Subject: [PATCH] Merge pull request #697 in SW_UGW/linux from
+ UGW_SW-38402-pcie-reboot-dump-EP-driver-shut-down to 8.3.1
+
+* commit '22f15c8b6fccb8a903d327eb04544691db3e1390':
+  pcie-reboot--dump-EP-driver-shut-down at reboot
+---
+ drivers/net/ethernet/intel/vrx518/ep.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/ethernet/intel/vrx518/ep.c b/drivers/net/ethernet/intel/vrx518/ep.c
+index 442be2ae24a1..40fc9d36299a 100755
+--- a/drivers/net/ethernet/intel/vrx518/ep.c
++++ b/drivers/net/ethernet/intel/vrx518/ep.c
+@@ -733,6 +733,7 @@ static struct pci_driver dc_ep_driver = {
+ 	.id_table = dc_ep_id_table,
+ 	.probe = dc_ep_probe,
+ 	.remove = dc_ep_remove,
++	.shutdown = dc_ep_remove,
+ 	/* PM not supported */
+ 	/* AER is controlled by RC */
+ };

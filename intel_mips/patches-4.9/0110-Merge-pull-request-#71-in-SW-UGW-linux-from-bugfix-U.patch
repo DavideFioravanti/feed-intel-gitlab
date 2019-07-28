@@ -1,0 +1,26 @@
+From 91cbfa42921e29749303db92fd054377cc34428c Mon Sep 17 00:00:00 2001
+From: "Vishnu Swaroop Kumar Sarma, Duddu" <duddu.swaroop@intel.com>
+Date: Thu, 12 Jul 2018 10:27:31 +0200
+Subject: [PATCH] Merge pull request #71 in SW_UGW/linux from
+ bugfix/UGW_SW-28034-ptm-wan-is-not-getting-ip-address-in-built_8.x_20180710t190001
+ to master
+
+* commit 'f16e7e3beedd4b81178d6ef8716f3b4b33ae877f':
+  UGW_SW-28034: Reverting back changes pushed in commit id 948acf52fe1bf8c62f2a5c8e129678e379f2b862 to solve ptm pppoe issue
+---
+ drivers/net/ethernet/lantiq/cqm/grx500/cbm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c b/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
+index b4c01f2764d6..a69d84725f12 100644
+--- a/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
++++ b/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
+@@ -1826,7 +1826,7 @@ cbm_cpu_pkt_tx_grx500(
+ 		skb->head = NULL;
+ 	}
+ 	if (setup_desc((struct cbm_desc *)&desc, tmp_data_ptr,
+-		       skb->len,
++		       (skb->len < (ETH_ZLEN + 8)) ? (ETH_ZLEN + 8) : skb->len,
+ 		       skb->DW1, skb->DW0)){
+ 		pr_err("cbm setup desc failed..\n");
+ 		dev_kfree_skb_any(skb);

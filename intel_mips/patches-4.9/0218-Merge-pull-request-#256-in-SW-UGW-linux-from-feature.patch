@@ -1,0 +1,49 @@
+From ad2f7816906e84721ade599b9cbd69ccd55a9c74 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Sat, 3 Nov 2018 18:24:58 +0100
+Subject: [PATCH] Merge pull request #256 in SW_UGW/linux from
+ feature/UGW_SW-31838-16-prio-merger-to-8.x to master
+
+* commit 'e0c7075e2f29004d19cc1cbb418adfb7c2af5c2b':
+  UGW_SW-31838: address the review comment
+  UGW_SW-31838:Macro to set 16 priority in extmark for 8.x
+---
+ include/linux/extmark.h | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/include/linux/extmark.h b/include/linux/extmark.h
+index 789c45c56d24..0944bc0306bd 100644
+--- a/include/linux/extmark.h
++++ b/include/linux/extmark.h
+@@ -4,12 +4,12 @@
+ /* Bit counting starts from Least significant bit, 0..31*/
+ 
+ #define CPEID_START_BIT_POS 0
+-#define CPEID_NO_OF_BITS 6
+-#define CPEID_MASK 0x3f
++#define CPEID_NO_OF_BITS 5
++#define CPEID_MASK 0x1f
+ 
+-#define QUEPRIO_START_BIT_POS 6
+-#define QUEPRIO_NO_OF_BITS 4
+-#define QUEPRIO_MASK 0x3c0
++#define QUEPRIO_START_BIT_POS 5
++#define QUEPRIO_NO_OF_BITS 5
++#define QUEPRIO_MASK 0x3e0
+ 
+ #define SUBQUEUE_START_BIT_POS 10
+ #define SUBQUEUE_NO_OF_BITS 3
+@@ -35,7 +35,6 @@
+ #define LROSESS_NO_OF_BITS 1
+ #define LROSESS_MASK 0x80000000
+ 
+-#endif
+ 
+ #define GET_DATA_FROM_MARK_OPT(mark, mask, pos, value) \
+ 	(value = ((mark & mask) >> pos))
+@@ -50,3 +49,5 @@
+ 	GET_DATA_FROM_MARK_OPT(mark, MASK(pos, len), pos, value)
+ #define SET_DATA_FROM_MARK(mark, pos, len, value) \
+ 	SET_DATA_FROM_MARK_OPT(mark, MASK(pos, len), pos, value)
++
++#endif

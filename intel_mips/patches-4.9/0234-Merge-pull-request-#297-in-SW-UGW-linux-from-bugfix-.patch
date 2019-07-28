@@ -1,0 +1,25 @@
+From cb3b8291f8e79cafd504943fc1d6795a5f2c4e2e Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 28 Nov 2018 13:26:15 +0100
+Subject: [PATCH] Merge pull request #297 in SW_UGW/linux from
+ bugfix/PONRTSYS-2772-system-boot-hangs-at-pon-ip to master
+
+* commit 'a79c209d5f12a1384bb8f9bc78a71c8da2193f92':
+  PONRTSYS-2772: Add pondef as parent of g_pon
+---
+ drivers/clk/intel/clk-prx300.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/intel/clk-prx300.c b/drivers/clk/intel/clk-prx300.c
+index c74d8bd2e16c..189bd0012e09 100644
+--- a/drivers/clk/intel/clk-prx300.c
++++ b/drivers/clk/intel/clk-prx300.c
+@@ -241,7 +241,7 @@ static const struct intel_clk_branch prx300_branch_clks[] __initconst = {
+ 		   G_DMA3_SHIFT, GATE_CLK_HW, 0),
+ 	INTEL_GATE(PRX300_GCLK_SWITCH, "g_switch", NULL, 0, CGU_GATE1,
+ 		   G_SWITCH_SHIFT, GATE_CLK_HW, 0),
+-	INTEL_GATE(PRX300_GCLK_PON, "g_pon", NULL, 0, CGU_GATE1,
++	INTEL_GATE(PRX300_GCLK_PON, "g_pon", "pondef", 0, CGU_GATE1,
+ 		   G_PON_SHIFT, GATE_CLK_HW, 0),
+ 	INTEL_GATE(PRX300_GCLK_AON, "g_aon", NULL, 0, CGU_GATE1,
+ 		   G_AON_SHIFT, GATE_CLK_HW, 0),

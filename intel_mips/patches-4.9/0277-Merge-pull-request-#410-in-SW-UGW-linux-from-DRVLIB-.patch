@@ -1,0 +1,189 @@
+From 371413ee2fdcc8dbb256a6f9d381ec0a18dfd8dc Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 18 Jan 2019 16:09:20 +0100
+Subject: [PATCH] Merge pull request #410 in SW_UGW/linux from
+ DRVLIB_SW-1093-replace-falconmx-with-prx300-in-arch-mips-lantiq-grx500-prom.c
+ to master
+
+* commit '31356cf9c59f47855b8e1dbee15fed62d310bed4':
+  fix compilation issue for bootcore
+  Rename falconmx to prx300 for combo-phy, wan-xpcs and prom
+---
+ arch/mips/include/asm/mach-lantiq/grx500/lantiq_soc.h | 17 +++++++++++++----
+ arch/mips/lantiq/grx500/prom.c                        | 13 +++----------
+ arch/mips/lantiq/grx500_bootcore/prom.c               | 13 +++----------
+ drivers/phy/intel/phy-intel-combo.c                   | 18 +++++++++---------
+ drivers/phy/intel/phy-intel-wan-xpcs.c                |  2 +-
+ 5 files changed, 29 insertions(+), 34 deletions(-)
+
+diff --git a/arch/mips/include/asm/mach-lantiq/grx500/lantiq_soc.h b/arch/mips/include/asm/mach-lantiq/grx500/lantiq_soc.h
+index a1f4da6de3ac..b9101e3412ab 100755
+--- a/arch/mips/include/asm/mach-lantiq/grx500/lantiq_soc.h
++++ b/arch/mips/include/asm/mach-lantiq/grx500/lantiq_soc.h
+@@ -24,7 +24,7 @@
+ #define SOC_ID_GRX3508		0x028
+ #define SOC_ID_IRX200		0x02F
+ 
+-/* FalconMX family chipid */
++/* PRX300 family chipid */
+ #define SOC_ID_FMX_FIBERPHY	0x002 /* HGU */
+ #define SOC_ID_FMX_SFU		0x003
+ #define SOC_ID_FMX_SFP		0x004
+@@ -32,16 +32,25 @@
+ 
+ /* SoC Types */
+ #define SOC_TYPE_GRX500		0x09
+-#define SOC_TYPE_FALCONMX	0x0a
++#define SOC_TYPE_PRX300		0x0a
++
++/* SoC Name */
++#define SOC_GRX500		"GRX500"
++#define SOC_GRX350		"GRX350"
++#define SOC_PRX300		"PRX300"
++
++/* SoC compatible */
++#define COMP_GRX500		"lantiq,grx500"
++#define COMP_PRX300		"intel,prx300"
+ 
+ static inline int ltq_is_grx500(void)
+ {
+ 	return (ltq_get_soc_type() == SOC_TYPE_GRX500);
+ }
+ 
+-static inline int ltq_is_falconmx(void)
++static inline int ltq_is_prx300(void)
+ {
+-	return (ltq_get_soc_type() == SOC_TYPE_FALCONMX);
++	return (ltq_get_soc_type() == SOC_TYPE_PRX300);
+ }
+ 
+ /* BOOT_SEL - find what boot media we have */
+diff --git a/arch/mips/lantiq/grx500/prom.c b/arch/mips/lantiq/grx500/prom.c
+index ac00c8da2b2a..2e710cf7a01f 100755
+--- a/arch/mips/lantiq/grx500/prom.c
++++ b/arch/mips/lantiq/grx500/prom.c
+@@ -22,13 +22,6 @@
+ 
+ #include "prom.h"
+ 
+-#define SOC_GRX500		"GRX500"
+-#define SOC_GRX350		"GRX350"
+-#define SOC_FALCONMX		"FALCONMX"
+-
+-#define COMP_GRX500		"lantiq,grx500"
+-#define COMP_FALCONMX		"intel,falconmx"
+-
+ #define PART_SHIFT		12
+ #define PART_MASK		0x0FFFFFFF
+ #define REV_SHIFT		28
+@@ -236,9 +229,9 @@ static void __init ltq_soc_detect(struct ltq_soc_info *i)
+ 	case SOC_ID_FMX_SFP:
+ 	case SOC_ID_FMX_SFU:
+ 	case SOC_ID_FMX_DPU:
+-		i->name = SOC_FALCONMX;
+-		i->type = SOC_TYPE_FALCONMX;
+-		i->compatible = COMP_FALCONMX;
++		i->name = SOC_PRX300;
++		i->type = SOC_TYPE_PRX300;
++		i->compatible = COMP_PRX300;
+ 		break;
+ 	default:
+ 		unreachable();
+diff --git a/arch/mips/lantiq/grx500_bootcore/prom.c b/arch/mips/lantiq/grx500_bootcore/prom.c
+index 8dce895ade1f..d00371b33a99 100644
+--- a/arch/mips/lantiq/grx500_bootcore/prom.c
++++ b/arch/mips/lantiq/grx500_bootcore/prom.c
+@@ -23,13 +23,6 @@
+ #include "clk.h"
+ 
+ 
+-#define SOC_GRX500      "GRX500"
+-#define SOC_GRX350      "GRX350"
+-#define SOC_FALCONMX    "FALCONMX"
+-
+-#define COMP_GRX500     "lantiq,grx500"
+-#define COMP_FALCONMX   "intel,falconmx"
+-
+ #ifdef CONFIG_USE_EMULATOR
+ #define SOC_ID_PD 0
+ #endif
+@@ -178,9 +171,9 @@ void __init ltq_soc_detect(struct ltq_soc_info *i)
+         case SOC_ID_FMX_SFP:
+         case SOC_ID_FMX_SFU:
+         case SOC_ID_FMX_DPU:
+-                i->name = SOC_FALCONMX;
+-                i->type = SOC_TYPE_FALCONMX;
+-                i->compatible = COMP_FALCONMX;
++                i->name = SOC_PRX300;
++                i->type = SOC_TYPE_PRX300;
++                i->compatible = COMP_PRX300;
+                 break;
+ 
+ #ifdef CONFIG_USE_EMULATOR
+diff --git a/drivers/phy/intel/phy-intel-combo.c b/drivers/phy/intel/phy-intel-combo.c
+index aa9d9a0e9bd9..5f78749202d6 100644
+--- a/drivers/phy/intel/phy-intel-combo.c
++++ b/drivers/phy/intel/phy-intel-combo.c
+@@ -1109,7 +1109,7 @@ static void twh_combo_phy_mode_set(struct intel_combo_phy *priv)
+ }
+ 
+ /* Falconmx platform data */
+-static unsigned long falconmx_get_clk_rate(enum intel_phy_mode mode)
++static unsigned long prx300_get_clk_rate(enum intel_phy_mode mode)
+ {
+ 	if (mode == PHY_PCIE_MODE) {
+ 		return CLK_100MHZ;
+@@ -1121,7 +1121,7 @@ static unsigned long falconmx_get_clk_rate(enum intel_phy_mode mode)
+ 	return 0;  /* Other mode No support */
+ }
+ 
+-static u32 falconmx_get_phy_cap(unsigned int id)
++static u32 prx300_get_phy_cap(unsigned int id)
+ {
+ 	const unsigned int phy_num = 1;
+ 
+@@ -1131,7 +1131,7 @@ static u32 falconmx_get_phy_cap(unsigned int id)
+ 		return 0;
+ }
+ 
+-static void falconmx_combo_phy_mode_set(struct intel_combo_phy *priv)
++static void prx300_combo_phy_mode_set(struct intel_combo_phy *priv)
+ {
+ 	const int reg_off = 0x120;
+ 	const int bit_off = 2;
+@@ -1160,16 +1160,16 @@ static const struct intel_cbphy_soc_data twh_phy_data = {
+ 	.combo_phy_mode_set = twh_combo_phy_mode_set,
+ };
+ 
+-static const struct intel_cbphy_soc_data falconmx_phy_data = {
+-	.name = "Falcon MX",
+-	.get_clk_rate = falconmx_get_clk_rate,
+-	.get_phy_cap = falconmx_get_phy_cap,
+-	.combo_phy_mode_set = falconmx_combo_phy_mode_set,
++static const struct intel_cbphy_soc_data prx300_phy_data = {
++	.name = "PRX300",
++	.get_clk_rate = prx300_get_clk_rate,
++	.get_phy_cap = prx300_get_phy_cap,
++	.combo_phy_mode_set = prx300_combo_phy_mode_set,
+ };
+ 
+ static const struct of_device_id of_intel_combo_phy_match[] = {
+ 	{ .compatible = "intel,combophy-twh", .data = &twh_phy_data },
+-	{ .compatible = "intel,combophy-falconmx", .data = &falconmx_phy_data },
++	{ .compatible = "intel,combophy-prx300", .data = &prx300_phy_data },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, of_intel_combo_phy_match);
+diff --git a/drivers/phy/intel/phy-intel-wan-xpcs.c b/drivers/phy/intel/phy-intel-wan-xpcs.c
+index b5dd9627da1d..933fdbe2fa19 100644
+--- a/drivers/phy/intel/phy-intel-wan-xpcs.c
++++ b/drivers/phy/intel/phy-intel-wan-xpcs.c
+@@ -198,7 +198,7 @@ static int intel_wan_xpcs_phy_probe(struct platform_device *pdev)
+ }
+ 
+ static const struct of_device_id of_intel_wan_xpcs_phy_match[] = {
+-	{ .compatible = "intel,wanxpcsphy-falconmx" },
++	{ .compatible = "intel,wanxpcsphy-prx300" },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, of_intel_wan_xpcs_phy_match);

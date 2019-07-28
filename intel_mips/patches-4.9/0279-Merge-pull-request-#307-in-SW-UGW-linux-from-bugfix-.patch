@@ -1,0 +1,929 @@
+From 28c103716eccd4123627ca47a07fd373dc286898 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 22 Jan 2019 07:42:55 +0100
+Subject: [PATCH] Merge pull request #307 in SW_UGW/linux from
+ bugfix/PONRTSYS-2737-unable-to-configure-drop-precdence-for-color-marking to
+ master
+
+* commit '0410bde44ffa119cc18107ca21c61d3d3177082a':
+  PONRTSYS-2737: Switch default color & remark mode table config
+  PONRTSYS-2737: Switch default color mode table config
+  color marking table set and get bug fix and modification
+  PONRTSYS-2737: DP fix color marking config for bridgeport, CTP
+---
+ .../lantiq/datapath/gswip31/datapath_gswip.c       | 104 +++-
+ .../lantiq/datapath/gswip31/datapath_misc.c        | 526 +++++++++++++++++++++
+ .../net/ethernet/lantiq/switch-api/gsw_flow_core.c |  70 ++-
+ include/net/datapath_api_qos.h                     |   7 +-
+ include/net/switch_api/gsw_flow_ops.h              |   4 +-
+ 5 files changed, 661 insertions(+), 50 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_gswip.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_gswip.c
+index c079d23909a2..96cc675de1fc 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_gswip.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_gswip.c
+@@ -1038,6 +1038,100 @@ int dp_meter_alloc_31(int inst, int *meterid, int flag)
+ 	return 0;
+ }
+ 
++static int dp_set_col_mark(struct net_device *dev, struct dp_meter_cfg  *meter,
++			   int flag, struct dp_meter_subif *mtr_subif)
++{
++	struct core_ops *gsw_handle;
++	GSW_BRIDGE_portConfig_t bp_cfg;
++	GSW_CTP_portConfig_t ctp_cfg;
++	GSW_return_t ret;
++	struct pmac_port_info *port_info;
++
++	if (!mtr_subif) {
++		PR_ERR("mtr_subif NULL\n");
++		return -1;
++	}
++	memset(&bp_cfg, 0, sizeof(GSW_BRIDGE_portConfig_t));
++	memset(&ctp_cfg, 0, sizeof(GSW_CTP_portConfig_t));
++	gsw_handle = dp_port_prop[mtr_subif->inst].ops[GSWIP_L];
++	if (!gsw_handle)
++		return -1;
++	if (flag & DP_METER_ATTACH_CTP) {/* CTP port Flag */
++		if (mtr_subif->subif.flag_pmapper) {
++			PR_ERR("can't use CTP,pmapper is enable\n");
++			return -1;
++		}
++		port_info = &dp_port_info[mtr_subif->subif.inst]
++					[mtr_subif->subif.port_id];
++		ctp_cfg.nLogicalPortId = mtr_subif->subif.port_id;
++		ctp_cfg.nSubIfIdGroup  = GET_VAP(mtr_subif->subif.subif,
++						 port_info->vap_offset,
++						 port_info->vap_mask);
++		ret = GSW_CORE_API(gsw_handle, gsw_ctp_ops.CTP_PortConfigGet,
++				   &ctp_cfg);
++		if (ret != GSW_statusOk) {
++			PR_ERR("PortConfigGet API failed :%d\n", ret);
++			return -1;
++		}
++		if (meter->dir == DP_DIR_INGRESS) {
++			ctp_cfg.eMask = GSW_CTP_PORT_CONFIG_INGRESS_MARKING;
++			ctp_cfg.eIngressMarkingMode = meter->mode;
++		} else if (meter->dir == DP_DIR_EGRESS) {
++			if (meter->mode != DP_INTERNAL) {
++				ctp_cfg.eMask =
++				GSW_CTP_PORT_CONFIG_EGRESS_MARKING_OVERRIDE;
++				ctp_cfg.bEgressMarkingOverrideEnable = 1;
++				ctp_cfg.eEgressMarkingModeOverride =
++					meter->mode;
++			} else {
++				DP_DEBUG(DP_DBG_FLAG_PAE,
++					 "mode:internal invalid for egress\n");
++			}
++		} else {
++			return -1;
++		}
++		ret = GSW_CORE_API(gsw_handle, gsw_ctp_ops.CTP_PortConfigSet,
++				   &ctp_cfg);
++		if (ret != GSW_statusOk) {
++			PR_ERR("PortConfigSet API failed :%d\n", ret);
++			return -1;
++		}
++	}
++	if (flag & DP_METER_ATTACH_BRPORT) {/*BRIDGE port Flag*/
++		if (!mtr_subif->subif.flag_bp) {
++			PR_ERR("flag_bp value 0\n");
++			return -1;
++		}
++		bp_cfg.nBridgePortId = mtr_subif->subif.bport;
++		ret = GSW_CORE_API(gsw_handle,
++				   gsw_brdgport_ops.BridgePort_ConfigGet,
++				   &bp_cfg);
++		if (ret != GSW_statusOk) {
++			PR_ERR("BridgePort_ConfigGet API failed :%d\n", ret);
++			return -1;
++		}
++		if (meter->dir == DP_DIR_EGRESS) {
++			PR_ERR("No Egress color marking for bridge port\n");
++			return -1;
++		} else if (meter->dir == DP_DIR_INGRESS) {
++			bp_cfg.eMask =
++				GSW_BRIDGE_PORT_CONFIG_MASK_INGRESS_MARKING;
++			bp_cfg.eIngressMarkingMode = meter->mode;
++		} else {
++			PR_ERR(" invalid color mark dir\n");
++			return -1;
++		}
++		ret = GSW_CORE_API(gsw_handle,
++				   gsw_brdgport_ops.BridgePort_ConfigSet,
++				   &bp_cfg);
++		if (ret != GSW_statusOk) {
++			PR_ERR("BridgePort_ConfigSet API failed :%d\n", ret);
++			return -1;
++		}
++	}
++	return 0;
++}
++
+ int dp_meter_add_31(struct net_device *dev,  struct dp_meter_cfg  *meter,
+ 		    int flag, struct dp_meter_subif *mtr_subif)
+ {
+@@ -1050,7 +1144,7 @@ int dp_meter_add_31(struct net_device *dev,  struct dp_meter_cfg  *meter,
+ 	GSW_return_t ret;
+ 	int bret = 0;
+ 
+-	if(!mtr_subif) {
++	if (!mtr_subif) {
+ 		PR_ERR("mtr_subif NULL\n");
+ 		return -1;
+ 	}
+@@ -1058,6 +1152,8 @@ int dp_meter_add_31(struct net_device *dev,  struct dp_meter_cfg  *meter,
+ 	if (!gsw_handle)
+ 		return -1;
+ 
++	if (flag & DP_COL_MARKING)
++		return dp_set_col_mark(dev, meter, flag, mtr_subif);
+ 	memset(&meter_cfg, 0, sizeof(GSW_QoS_meterCfg_t));
+ 	meter_cfg.nCbs = meter->cbs;
+ 	meter_cfg.nRate = METER_CIR(meter->cir);
+@@ -1073,8 +1169,7 @@ int dp_meter_add_31(struct net_device *dev,  struct dp_meter_cfg  *meter,
+ 		return -1;
+ 	}
+ 	meter_cfg.nMeterId = meter->meter_id;
+-	if (flag & DP_METER_COL_MARKING_ONLY)
+-		meter_cfg.nColourBlindMode = meter->mode;
++	meter_cfg.nColourBlindMode = meter->col_mode;
+ 	ret = GSW_CORE_API(gsw_handle, gsw_qos_ops.QoS_MeterCfgSet,
+ 			   &meter_cfg);
+ 	if (ret != GSW_statusOk) {
+@@ -1312,7 +1407,8 @@ int dp_meter_del_31(struct net_device *dev,  struct dp_meter_cfg  *meter,
+ 			bret = -1;
+ 			goto err;
+ 		}
+-		port_info = &dp_port_info[mtr_subif->subif.inst][mtr_subif->subif.port_id];
++		port_info = &dp_port_info[mtr_subif->subif.inst]
++					[mtr_subif->subif.port_id];
+ 		if (!port_info) {
+ 			PR_ERR(" port_info is NULL\n");
+ 			bret = -1;
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+index 742650ac74b1..656077d51744 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+@@ -535,6 +535,527 @@ int alloc_q_to_port(struct ppv4_q_sch_port *info, u32 flag)
+ }
+ #endif /*CONFIG_LTQ_DATAPATH_QOS_HAL*/
+ 
++#define PRIO0	0
++#define PRIO1	1
++#define PRIO2	2
++#define PRIO3	3
++#define PRIO4	4
++#define PRIO5	5
++#define PRIO6	6
++#define PRIO7	7
++
++static int dp_gswip_remark_8P0D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorRemarkingEntry_t color_remark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_remark.eMode = mode;
++	color_remark.nVal[0] = 0;
++	color_remark.nVal[1] = 2;
++	color_remark.nVal[2] = 4;
++	color_remark.nVal[3] = 6;
++	color_remark.nVal[4] = 8;
++	color_remark.nVal[5] = 10;
++	color_remark.nVal[6] = 12;
++	color_remark.nVal[7] = 14;
++	color_remark.nVal[8] = 1;
++	color_remark.nVal[9] = 3;
++	color_remark.nVal[10] = 5;
++	color_remark.nVal[11] = 7;
++	color_remark.nVal[12] = 9;
++	color_remark.nVal[13] = 11;
++	color_remark.nVal[14] = 13;
++	color_remark.nVal[15] = 15;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorReMarkingTableSet,
++				gsw_handle, &color_remark)) {
++		PR_ERR("GSW_QOS_COLOR_REMARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_remark_7P1D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorRemarkingEntry_t color_remark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_remark.eMode = mode;
++	color_remark.nVal[0] = 0;
++	color_remark.nVal[1] = 2;
++	color_remark.nVal[2] = 4;
++	color_remark.nVal[3] = 6;
++	color_remark.nVal[4] = 10;
++	color_remark.nVal[5] = 10;
++	color_remark.nVal[6] = 12;
++	color_remark.nVal[7] = 14;
++	color_remark.nVal[8] = 1;
++	color_remark.nVal[9] = 3;
++	color_remark.nVal[10] = 5;
++	color_remark.nVal[11] = 7;
++	color_remark.nVal[12] = 9;
++	color_remark.nVal[13] = 9;
++	color_remark.nVal[14] = 13;
++	color_remark.nVal[15] = 15;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorReMarkingTableSet,
++				gsw_handle, &color_remark)) {
++		PR_ERR("GSW_QOS_COLOR_REMARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_remark_6P2D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorRemarkingEntry_t color_remark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_remark.eMode = mode;
++	color_remark.nVal[0] = 0;
++	color_remark.nVal[1] = 2;
++	color_remark.nVal[2] = 6;
++	color_remark.nVal[3] = 6;
++	color_remark.nVal[4] = 10;
++	color_remark.nVal[5] = 10;
++	color_remark.nVal[6] = 12;
++	color_remark.nVal[7] = 14;
++	color_remark.nVal[8] = 1;
++	color_remark.nVal[9] = 3;
++	color_remark.nVal[10] =	5;
++	color_remark.nVal[11] = 5;
++	color_remark.nVal[12] = 9;
++	color_remark.nVal[13] = 9;
++	color_remark.nVal[14] = 13;
++	color_remark.nVal[15] = 15;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorReMarkingTableSet,
++				gsw_handle, &color_remark)) {
++		PR_ERR("GSW_QOS_COLOR_REMARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_remark_5P3D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorRemarkingEntry_t color_remark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_remark.eMode = mode;
++	color_remark.nVal[0] = 2;
++	color_remark.nVal[1] = 2;
++	color_remark.nVal[2] = 6;
++	color_remark.nVal[3] = 6;
++	color_remark.nVal[4] = 10;
++	color_remark.nVal[5] = 10;
++	color_remark.nVal[6] = 12;
++	color_remark.nVal[7] = 14;
++	color_remark.nVal[8] = 1;
++	color_remark.nVal[9] = 1;
++	color_remark.nVal[10] = 5;
++	color_remark.nVal[11] = 5;
++	color_remark.nVal[12] = 9;
++	color_remark.nVal[13] = 9;
++	color_remark.nVal[14] = 13;
++	color_remark.nVal[15] = 15;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorReMarkingTableSet,
++				gsw_handle, &color_remark)) {
++		PR_ERR("GSW_QOS_COLOR_REMARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_remark_dscp_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorRemarkingEntry_t color_remark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_remark.eMode = mode;
++	color_remark.nVal[0] = 10;
++	color_remark.nVal[1] = 18;
++	color_remark.nVal[2] = 26;
++	color_remark.nVal[3] = 34;
++	color_remark.nVal[4] = 34;
++	color_remark.nVal[5] = 34;
++	color_remark.nVal[6] = 34;
++	color_remark.nVal[7] = 34;
++	color_remark.nVal[8] = 12;
++	color_remark.nVal[9] = 20;
++	color_remark.nVal[10] = 28;
++	color_remark.nVal[11] = 36;
++	color_remark.nVal[12] = 36;
++	color_remark.nVal[13] = 36;
++	color_remark.nVal[14] = 36;
++	color_remark.nVal[15] = 36;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorReMarkingTableSet,
++				gsw_handle, &color_remark)) {
++		PR_ERR("GSW_QOS_COLOR_REMARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_color_dscp_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorMarkingEntry_t color_mark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_mark.eMode = mode;
++	color_mark.nPriority[0] = PRIO0;
++	color_mark.nPriority[1] = PRIO0;
++	color_mark.nPriority[2] = PRIO0;
++	color_mark.nPriority[3] = PRIO0;
++	color_mark.nPriority[4] = PRIO0;
++	color_mark.nPriority[5] = PRIO0;
++	color_mark.nPriority[6] = PRIO0;
++	color_mark.nPriority[7] = PRIO0;
++	color_mark.nPriority[8] = PRIO0;
++	color_mark.nPriority[9] = PRIO0;
++	color_mark.nPriority[10] = PRIO0;
++	color_mark.nPriority[11] = PRIO0;
++	color_mark.nPriority[12] = PRIO0;
++	color_mark.nPriority[13] = PRIO0;
++	color_mark.nPriority[14] = PRIO0;
++	color_mark.nPriority[15] = PRIO0;
++	color_mark.nPriority[16] = PRIO0;
++	color_mark.nPriority[17] = PRIO0;
++	color_mark.nPriority[18] = PRIO1;
++	color_mark.nPriority[19] = PRIO0;
++	color_mark.nPriority[20] = PRIO1;
++	color_mark.nPriority[21] = PRIO0;
++	color_mark.nPriority[22] = PRIO1;
++	color_mark.nPriority[23] = PRIO0;
++	color_mark.nPriority[24] = PRIO0;
++	color_mark.nPriority[25] = PRIO0;
++	color_mark.nPriority[26] = PRIO2;
++	color_mark.nPriority[27] = PRIO0;
++	color_mark.nPriority[28] = PRIO2;
++	color_mark.nPriority[29] = PRIO0;
++	color_mark.nPriority[30] = PRIO2;
++	color_mark.nPriority[31] = PRIO0;
++	color_mark.nPriority[32] = PRIO0;
++	color_mark.nPriority[33] = PRIO0;
++	color_mark.nPriority[34] = PRIO3;
++	color_mark.nPriority[35] = PRIO0;
++	color_mark.nPriority[36] = PRIO3;
++	color_mark.nPriority[37] = PRIO0;
++	color_mark.nPriority[38] = PRIO3;
++	color_mark.nPriority[39] = PRIO0;
++	color_mark.nPriority[40] = PRIO0;
++	color_mark.nPriority[41] = PRIO0;
++	color_mark.nPriority[42] = PRIO0;
++	color_mark.nPriority[43] = PRIO0;
++	color_mark.nPriority[44] = PRIO0;
++	color_mark.nPriority[45] = PRIO0;
++	color_mark.nPriority[46] = PRIO0;
++	color_mark.nPriority[47] = PRIO0;
++	color_mark.nPriority[48] = PRIO0;
++	color_mark.nPriority[49] = PRIO0;
++	color_mark.nPriority[50] = PRIO0;
++	color_mark.nPriority[51] = PRIO0;
++	color_mark.nPriority[52] = PRIO0;
++	color_mark.nPriority[53] = PRIO0;
++	color_mark.nPriority[54] = PRIO0;
++	color_mark.nPriority[55] = PRIO0;
++	color_mark.nPriority[56] = PRIO0;
++	color_mark.nPriority[57] = PRIO0;
++	color_mark.nPriority[58] = PRIO0;
++	color_mark.nPriority[59] = PRIO0;
++	color_mark.nPriority[60] = PRIO0;
++	color_mark.nPriority[61] = PRIO0;
++	color_mark.nPriority[62] = PRIO0;
++	color_mark.nPriority[63] = PRIO0;
++	color_mark.nColor[0] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[1] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[2] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[3] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[4] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[5] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[6] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[7] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[8] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[9] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[10] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[11] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[12] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[13] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[14] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[15] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[16] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[17] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[18] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[19] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[20] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[21] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[22] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[23] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[24] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[25] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[26] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[27] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[28] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[29] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[30] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[31] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[32] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[33] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[34] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[35] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[36] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[37] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[38] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[39] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[40] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[41] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[42] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[43] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[44] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[45] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[46] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[47] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[48] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[49] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[50] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[51] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[52] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[53] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[54] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[55] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[56] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[57] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[58] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[59] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[60] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[61] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[62] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[63] = GSW_DROP_PRECEDENCE_YELLOW;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorMarkingTableSet,
++				gsw_handle, &color_mark)) {
++		PR_ERR("GSW_QOS_COLOR_MARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_color_5P3D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorMarkingEntry_t color_mark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_mark.eMode = mode;
++	color_mark.nPriority[0] = PRIO0;
++	color_mark.nPriority[1] = PRIO0;
++	color_mark.nPriority[2] = PRIO0;
++	color_mark.nPriority[3] = PRIO0;
++	color_mark.nPriority[4] = PRIO2;
++	color_mark.nPriority[5] = PRIO2;
++	color_mark.nPriority[6] = PRIO2;
++	color_mark.nPriority[7] = PRIO2;
++	color_mark.nPriority[8] = PRIO4;
++	color_mark.nPriority[9] = PRIO4;
++	color_mark.nPriority[10] = PRIO4;
++	color_mark.nPriority[11] = PRIO4;
++	color_mark.nPriority[12] = PRIO6;
++	color_mark.nPriority[13] = PRIO6;
++	color_mark.nPriority[14] = PRIO7;
++	color_mark.nPriority[15] = PRIO7;
++	color_mark.nColor[0] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[1] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[2] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[3] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[4] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[5] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[6] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[7] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[8] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[9] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[10] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[11] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[12] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[13] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[14] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[15] = GSW_DROP_PRECEDENCE_YELLOW;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorMarkingTableSet,
++				gsw_handle, &color_mark)) {
++		PR_ERR("GSW_QOS_COLOR_MARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_color_6P2D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorMarkingEntry_t color_mark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_mark.eMode = mode;
++	color_mark.nPriority[0] = PRIO0;
++	color_mark.nPriority[1] = PRIO0;
++	color_mark.nPriority[2] = PRIO1;
++	color_mark.nPriority[3] = PRIO1;
++	color_mark.nPriority[4] = PRIO2;
++	color_mark.nPriority[5] = PRIO2;
++	color_mark.nPriority[6] = PRIO2;
++	color_mark.nPriority[7] = PRIO2;
++	color_mark.nPriority[8] = PRIO4;
++	color_mark.nPriority[9] = PRIO4;
++	color_mark.nPriority[10] = PRIO4;
++	color_mark.nPriority[11] = PRIO4;
++	color_mark.nPriority[12] = PRIO6;
++	color_mark.nPriority[13] = PRIO6;
++	color_mark.nPriority[14] = PRIO7;
++	color_mark.nPriority[15] = PRIO7;
++	color_mark.nColor[0] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[1] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[2] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[3] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[4] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[5] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[6] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[7] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[8] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[9] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[10] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[11] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[12] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[13] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[14] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[15] = GSW_DROP_PRECEDENCE_YELLOW;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorMarkingTableSet,
++				gsw_handle, &color_mark)) {
++		PR_ERR("GSW_QOS_COLOR_MARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_color_7P1D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorMarkingEntry_t color_mark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_mark.eMode = mode;
++	color_mark.nPriority[0] = PRIO0;
++	color_mark.nPriority[1] = PRIO0;
++	color_mark.nPriority[2] = PRIO1;
++	color_mark.nPriority[3] = PRIO1;
++	color_mark.nPriority[4] = PRIO2;
++	color_mark.nPriority[5] = PRIO2;
++	color_mark.nPriority[6] = PRIO3;
++	color_mark.nPriority[7] = PRIO3;
++	color_mark.nPriority[8] = PRIO4;
++	color_mark.nPriority[9] = PRIO4;
++	color_mark.nPriority[10] = PRIO4;
++	color_mark.nPriority[11] = PRIO4;
++	color_mark.nPriority[12] = PRIO6;
++	color_mark.nPriority[13] = PRIO6;
++	color_mark.nPriority[14] = PRIO7;
++	color_mark.nPriority[15] = PRIO7;
++	color_mark.nColor[0] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[1] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[2] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[3] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[4] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[5] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[6] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[7] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[8] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[9] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[10] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[11] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[12] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[13] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[14] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[15] = GSW_DROP_PRECEDENCE_YELLOW;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorMarkingTableSet,
++				gsw_handle, &color_mark)) {
++		PR_ERR("GSW_QOS_COLOR_MARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_gswip_color_8P0D_set(int mode, int inst)
++{
++	struct core_ops *gsw_handle;
++	GSW_QoS_colorMarkingEntry_t color_mark = {0};
++
++	gsw_handle = dp_port_prop[inst].ops[0];
++	color_mark.eMode = mode;
++	color_mark.nPriority[0] = PRIO0;
++	color_mark.nPriority[1] = PRIO0;
++	color_mark.nPriority[2] = PRIO1;
++	color_mark.nPriority[3] = PRIO1;
++	color_mark.nPriority[4] = PRIO2;
++	color_mark.nPriority[5] = PRIO2;
++	color_mark.nPriority[6] = PRIO3;
++	color_mark.nPriority[7] = PRIO3;
++	color_mark.nPriority[8] = PRIO4;
++	color_mark.nPriority[9] = PRIO4;
++	color_mark.nPriority[10] = PRIO5;
++	color_mark.nPriority[11] = PRIO5;
++	color_mark.nPriority[12] = PRIO6;
++	color_mark.nPriority[13] = PRIO6;
++	color_mark.nPriority[14] = PRIO7;
++	color_mark.nPriority[15] = PRIO7;
++	color_mark.nColor[0] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[1] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[2] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[3] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[4] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[5] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[6] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[7] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[8] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[9] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[10] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[11] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[12] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[13] = GSW_DROP_PRECEDENCE_YELLOW;
++	color_mark.nColor[14] = GSW_DROP_PRECEDENCE_GREEN;
++	color_mark.nColor[15] = GSW_DROP_PRECEDENCE_YELLOW;
++	if (gsw_core_api((dp_gsw_cb)gsw_handle->gsw_qos_ops
++				.QOS_ColorMarkingTableSet,
++				gsw_handle, &color_mark)) {
++		PR_ERR("GSW_QOS_COLOR_MARKING_CFG_SET failed\n");
++		return -1;
++	}
++	return 0;
++}
++
++static int dp_platform_color_table_set(int inst)
++{
++	dp_gswip_color_8P0D_set(GSW_MARKING_PCP_8P0D, inst);
++	dp_gswip_color_7P1D_set(GSW_MARKING_PCP_7P1D, inst);
++	dp_gswip_color_6P2D_set(GSW_MARKING_PCP_6P2D, inst);
++	dp_gswip_color_5P3D_set(GSW_MARKING_PCP_5P3D, inst);
++	dp_gswip_color_dscp_set(GSW_MARKING_DSCP_AF, inst);
++	dp_gswip_remark_8P0D_set(GSW_MARKING_PCP_8P0D, inst);
++	dp_gswip_remark_7P1D_set(GSW_MARKING_PCP_7P1D, inst);
++	dp_gswip_remark_6P2D_set(GSW_MARKING_PCP_6P2D, inst);
++	dp_gswip_remark_5P3D_set(GSW_MARKING_PCP_5P3D, inst);
++	dp_gswip_remark_dscp_set(GSW_MARKING_DSCP_AF, inst);
++
++	return 0;
++}
++
+ int dp_platform_queue_set(int inst, u32 flag)
+ {
+ 	int ret, i;
+@@ -751,6 +1272,11 @@ static int dp_platform_set(int inst, u32 flag)
+ 
+ 			return -1;
+ 		}
++		if (dp_platform_color_table_set(inst)) {
++			PR_ERR("dp_platform_color_table_set fail\n");
++
++			return -1;
++		}
+ 		if (cpu_vlan_mod_dis(inst)) {
+ 			PR_ERR("cpu_vlan_mod_dis fail\n");
+ 			return -1;
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c b/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
+index b39c66faa00d..55b3d431a174 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
+@@ -18392,7 +18392,7 @@ GSW_return_t GSW_QOS_ColorMarkingTableSet(void *cdev, GSW_QoS_colorMarkingEntry_
+ {
+ 	pctbl_prog_t tbl_prog;
+ 	ethsw_api_dev_t *gswdev = GSW_PDATA_GET(cdev);
+-	u8 pcp, dscp, tbl_index;
++	u8 pcp, dscp;
+ 	u32 ret;
+ 
+ 	if (gswdev == NULL) {
+@@ -18419,22 +18419,18 @@ GSW_return_t GSW_QOS_ColorMarkingTableSet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 
+ 	case GSW_MARKING_PCP_8P0D:
+ 
+-	/*	For mode 3 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-		Table Entry index from 0 to 15	*/
++	/*	For mode 3 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
+ 	case GSW_MARKING_PCP_7P1D:
+ 
+-	/*	For mode 4 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-		Table Entry index from 16 to 31 */
++	/*	For mode 4 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
+ 	case GSW_MARKING_PCP_6P2D:
+ 
+-	/*	For mode 5 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-		Table Entry index from 32 to 47 */
++	/*	For mode 5 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
+ 	case GSW_MARKING_PCP_5P3D:
+-		/*	For mode 6 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-			Table Entry index from 48 to 63 */
+-		tbl_index = (((parm->eMode) - GSW_MARKING_PCP_8P0D) << 4);
+ 
+-		for (pcp = 0; pcp <= 15; pcp++, tbl_index++) {
++		/*	For mode 6 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
++
++		for (pcp = 0; pcp <= 15; pcp++) {
+ 			/*Set Table Entry Index*/
+ 			CLEAR_U16(tbl_prog.pcindex);
+ 			/*Set Color Marking Mode Entry address in PCE_TBL_ADDR 2:0*/
+@@ -18447,9 +18443,9 @@ GSW_return_t GSW_QOS_ColorMarkingTableSet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 			/*Set PCE_TBL_VAL 0*/
+ 			CLEAR_U16(tbl_prog.val[0]);
+ 			/*Set Priority in PCE_TBL_VAL 0 (bit 6:4)*/
+-			tbl_prog.val[0] |= ((parm->nPriority[tbl_index] & 0x7) << 4);
++			tbl_prog.val[0] |= ((parm->nPriority[pcp] & 0x7) << 4);
+ 			/*Set Color in PCE_TBL_VAL 0 (bit 8:7)*/
+-			tbl_prog.val[0] |= ((parm->nColor[tbl_index] & 0x3) << 7);
++			tbl_prog.val[0] |= ((parm->nColor[pcp] & 0x3) << 7);
+ 			/*Address-based write*/
+ 			gsw_pce_table_write(cdev, &tbl_prog);
+ 		}
+@@ -18457,11 +18453,10 @@ GSW_return_t GSW_QOS_ColorMarkingTableSet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 		break;
+ 
+ 	case GSW_MARKING_DSCP_AF:
+-		/*	For mode 7 there are 64 entries corresponding to DSCP
+-			Table Entry index from 64 to 127 */
+-		tbl_index = 0;
+ 
+-		for (dscp = 0; dscp <= 63; dscp++, tbl_index++) {
++		/*	For mode 7 there are 64 entries corresponding to DSCP */
++
++		for (dscp = 0; dscp <= 63; dscp++) {
+ 			/*Set Table Entry Index*/
+ 			CLEAR_U16(tbl_prog.pcindex);
+ 			/*Set DSCP Entry address in PCE_TBL_ADDR*/
+@@ -18472,9 +18467,9 @@ GSW_return_t GSW_QOS_ColorMarkingTableSet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 			/*Set PCE_TBL_VAL 0*/
+ 			CLEAR_U16(tbl_prog.val[0]);
+ 			/*Set Priority in PCE_TBL_VAL 0 (bit 6:4)*/
+-			tbl_prog.val[0] |= ((parm->nPriority[tbl_index] & 0x7) << 4);
++			tbl_prog.val[0] |= ((parm->nPriority[dscp] & 0x7) << 4);
+ 			/*Set Color in PCE_TBL_VAL 0 (bit 8:7)*/
+-			tbl_prog.val[0] |= ((parm->nColor[tbl_index] & 0x3) << 7);
++			tbl_prog.val[0] |= ((parm->nColor[dscp] & 0x3) << 7);
+ 			/*Address-based write*/
+ 			gsw_pce_table_write(cdev, &tbl_prog);
+ 		}
+@@ -18494,7 +18489,7 @@ GSW_return_t GSW_QOS_ColorMarkingTableGet(void *cdev, GSW_QoS_colorMarkingEntry_
+ {
+ 	pctbl_prog_t tbl_prog;
+ 	ethsw_api_dev_t *gswdev = GSW_PDATA_GET(cdev);
+-	u8 pcp, dscp, tbl_index;
++	u8 pcp, dscp;
+ 	u32 ret;
+ 
+ 	if (gswdev == NULL) {
+@@ -18521,22 +18516,18 @@ GSW_return_t GSW_QOS_ColorMarkingTableGet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 
+ 	case GSW_MARKING_PCP_8P0D:
+ 
+-	/*	For mode 3 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-		Table Entry index from 0 to 15	*/
++	/*	For mode 3 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
+ 	case GSW_MARKING_PCP_7P1D:
+ 
+-	/*	For mode 4 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-		Table Entry index from 16 to 31 */
++	/*	For mode 4 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
+ 	case GSW_MARKING_PCP_6P2D:
+ 
+-	/*	For mode 5 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-		Table Entry index from 32 to 47 */
++	/*	For mode 5 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
+ 	case GSW_MARKING_PCP_5P3D:
+-		/*	For mode 6 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0)
+-			Table Entry index from 48 to 63 */
+-		tbl_index = (((parm->eMode) - GSW_MARKING_PCP_8P0D) << 4);
+ 
+-		for (pcp = 0; pcp <= 15; pcp++, tbl_index++) {
++		/*	For mode 6 there are 16 entries corresponding to PCP (bit3 to 1) + DEI (bit 0) */
++
++		for (pcp = 0; pcp <= 15; pcp++) {
+ 			tbl_prog.table = PCE_MAMRK_INDEX;
+ 			/*Set Table Entry Index*/
+ 			CLEAR_U16(tbl_prog.pcindex);
+@@ -18549,19 +18540,18 @@ GSW_return_t GSW_QOS_ColorMarkingTableGet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 
+ 			/*Get PCE_TBL_VAL 0*/
+ 			/*Get Priority in PCE_TBL_VAL 0 (bit 6:4)*/
+-			parm->nPriority[tbl_index] = ((tbl_prog.val[0] & 0x70) >> 4);
++			parm->nPriority[pcp] = ((tbl_prog.val[0] & 0x70) >> 4);
+ 			/*Get Color in PCE_TBL_VAL 0 (bit 8:7)*/
+-			parm->nColor[tbl_index] |= ((tbl_prog.val[0] & 0x180) >> 7);
++			parm->nColor[pcp] |= ((tbl_prog.val[0] & 0x180) >> 7);
+ 		}
+ 
+ 		break;
+ 
+ 	case GSW_MARKING_DSCP_AF:
+-		/*	For mode 7 there are 64 entries corresponding to DSCP
+-			Table Entry index from 64 to 127 */
+-		tbl_index = 0;
+ 
+-		for (dscp = 0; dscp <= 63; dscp++, tbl_index++) {
++		/*	For mode 7 there are 64 entries corresponding to DSCP */
++
++		for (dscp = 0; dscp <= 63; dscp++) {
+ 			tbl_prog.table = PCE_MAMRK_INDEX;
+ 			/*Set Table Entry Index*/
+ 			CLEAR_U16(tbl_prog.pcindex);
+@@ -18574,9 +18564,9 @@ GSW_return_t GSW_QOS_ColorMarkingTableGet(void *cdev, GSW_QoS_colorMarkingEntry_
+ 
+ 			/*Get PCE_TBL_VAL 0*/
+ 			/*Get Priority in PCE_TBL_VAL 0 (bit 6:4)*/
+-			parm->nPriority[tbl_index] = ((tbl_prog.val[0] & 0x70) >> 4);
++			parm->nPriority[dscp] = ((tbl_prog.val[0] & 0x70) >> 4);
+ 			/*Get Color in PCE_TBL_VAL 0 (bit 8:7)*/
+-			parm->nColor[tbl_index] |= ((tbl_prog.val[0] & 0x180) >> 7);
++			parm->nColor[dscp] |= ((tbl_prog.val[0] & 0x180) >> 7);
+ 		}
+ 
+ 		break;
+@@ -26603,8 +26593,8 @@ static GSW_return_t gsw_init_fn_ptrs(struct core_ops *ops)
+ 	ops->gsw_qos_ops.QoS_QueueBufferReserveCfgGet	= GSW_QoS_QueueBufferReserveCfgGet;
+ 	ops->gsw_qos_ops.QoS_QueueBufferReserveCfgSet	= GSW_QoS_QueueBufferReserveCfgSet;
+ 	ops->gsw_qos_ops.QoS_Meter_Act					= GSW_QoS_Meter_Act;
+-	ops->gsw_qos_ops.QOS_ColorMarkingTableGet		= GSW_QOS_ColorMarkingTableSet;
+-	ops->gsw_qos_ops.QOS_ColorMarkingTableSet		= GSW_QOS_ColorMarkingTableGet;
++	ops->gsw_qos_ops.QOS_ColorMarkingTableGet		= GSW_QOS_ColorMarkingTableGet;
++	ops->gsw_qos_ops.QOS_ColorMarkingTableSet		= GSW_QOS_ColorMarkingTableSet;
+ 	ops->gsw_qos_ops.QOS_ColorReMarkingTableSet		= GSW_QOS_ColorReMarkingTableSet;
+ 	ops->gsw_qos_ops.QOS_ColorReMarkingTableGet		= GSW_QOS_ColorReMarkingTableGet;
+ 	ops->gsw_qos_ops.QOS_MeterAlloc					= GSW_QOS_MeterAlloc;
+diff --git a/include/net/datapath_api_qos.h b/include/net/datapath_api_qos.h
+index dc241e59eba0..539d5beaaea9 100644
+--- a/include/net/datapath_api_qos.h
++++ b/include/net/datapath_api_qos.h
+@@ -1084,7 +1084,7 @@ int dp_qos_level_get(struct dp_qos_level *dp, int flag);
+ 
+ /*! Enumeration for color marking mode for drop precedence selection */
+ enum dp_col_marking {
+-	/*!< Do not color mark */
++	/*!< Mark all to green */
+ 	DP_NO_MARKING,
+ 	/*!< Internal marking derives the color of the packet from internal
+ 	     data flow instead of using VLAN tag or DSCP */
+@@ -1133,7 +1133,7 @@ struct dp_meter_cfg {
+ 	/*!< meter for egressing traffic */
+ #define DP_DIR_EGRESS  1
+ 	/*!< Configure color marking only, no meter setup */
+-#define DP_METER_COL_MARKING_ONLY	BIT(0)
++#define DP_COL_MARKING			BIT(0)
+ 	/*!< Attach meter to PCE rule e.g., CPU traffic limiting */
+ #define DP_METER_ATTACH_PCE		BIT(1)
+ 	/*!< Attach meter to CTP port */
+@@ -1189,7 +1189,7 @@ int dp_meter_alloc(int inst, int *meterid, int flag);
+  *		PCE table instance.
+  * @param: [in] meter meter parameters: rates, color marking
+  * @param: [in] flag:
+- *	   DP_METER_COL_MARKING_ONLY	- setup only color marking
++ *	   DP_COL_MARKING		- setup only color marking
+  *	   DP_METER_ATTACH_PCE		- setup PCE rule meter e.g., CPU traffic
+  *	   DP_METER_ATTACH_CTP		- setup CTP port metering
+  *	   DP_METER_ATTACH_BPORT	- setup bridge port metering
+@@ -1206,7 +1206,6 @@ int dp_meter_add(struct net_device *dev, struct dp_meter_cfg *meter, int flag);
+  * @param: [in] dev pointer to netdevice CTP/BP/Bridge
+  * @param: [in] meter meter parameters: rates, color marking
+  * @param: [in] flag:
+- *	   DP_METER_COL_MARKING_ONLY	- setup only color marking
+  *	   DP_METER_ATTACH_PCE		- setup PCE rule meter e.g., CPU traffic
+  *	   DP_METER_ATTACH_CTP		- setup CTP port metering
+  *	   DP_METER_ATTACH_BPORT	- setup bridge port metering
+diff --git a/include/net/switch_api/gsw_flow_ops.h b/include/net/switch_api/gsw_flow_ops.h
+index 413f0a1d6a25..1b75fbca5dca 100644
+--- a/include/net/switch_api/gsw_flow_ops.h
++++ b/include/net/switch_api/gsw_flow_ops.h
+@@ -243,9 +243,9 @@ struct qos_ops {
+ 	/* Command: GSW_QOS_METER_ACT ; Index: 0x2B */
+ 	GSW_return_t (*QoS_Meter_Act)(void *, GSW_QoS_mtrAction_t *);
+ 	/* Command: GSW_QOS_COLOR_MARKING_TABLE_SET ; Index: 0x2C */
+-	GSW_return_t (*QOS_ColorMarkingTableGet)(void *, GSW_QoS_colorMarkingEntry_t *);
+-	/* Command: GSW_QOS_COLOR_MARKING_TABLE_GET ; Index: 0x2D */
+ 	GSW_return_t (*QOS_ColorMarkingTableSet)(void *, GSW_QoS_colorMarkingEntry_t *);
++	/* Command: GSW_QOS_COLOR_MARKING_TABLE_GET ; Index: 0x2D */
++	GSW_return_t (*QOS_ColorMarkingTableGet)(void *, GSW_QoS_colorMarkingEntry_t *);
+ 	/* Command: GSW_QOS_COLOR_REMARKING_TABLE_SET ; Index: 0x2E */
+ 	GSW_return_t (*QOS_ColorReMarkingTableSet)(void *, GSW_QoS_colorRemarkingEntry_t *);
+ 	/* Command: GSW_QOS_COLOR_REMARKING_TABLE_GET ; Index: 0x2F */

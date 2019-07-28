@@ -1,0 +1,527 @@
+From 6779ffa04a1db5f8bc7cd6adb8d0c7ab3f4f7b1a Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Thu, 27 Sep 2018 19:44:44 +0200
+Subject: [PATCH] Merge pull request #206 in SW_UGW/linux from
+ bugfix/PMCPESYS-89-ugw8-clean-up-speeddmonitor-driver-to-be-sdl-compliant to
+ master
+
+* commit 'de02e8f6bba4e721618f9d3866e4a231e3d1c9af':
+  PMCPESYS-89: spdmon: Replace panic() with dev_err()
+  PMCPESYS-89: spdmon: Change default sysfs access right
+  PMCPESYS-89: spdmon: Remove old unused code
+  PMCPESYS-89: spdmon: Remove obsolete chardev interface
+---
+ drivers/hwmon/spdmon.c | 332 ++++++-------------------------------------------
+ 1 file changed, 41 insertions(+), 291 deletions(-)
+
+diff --git a/drivers/hwmon/spdmon.c b/drivers/hwmon/spdmon.c
+index 3601fdf46804..119a931068ea 100644
+--- a/drivers/hwmon/spdmon.c
++++ b/drivers/hwmon/spdmon.c
+@@ -7,17 +7,10 @@
+  * it under the terms of the GNU General Public License as published by
+  * the Free Software Foundation; version 2 of the License.
+  */
+-#include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/device.h>
+-#include <linux/of.h>
+-#include <linux/of_irq.h>
+-#include <linux/seq_file.h>
+-#include <linux/proc_fs.h>
+ #include <lantiq_soc.h>
+-#include <linux/cdev.h>
+-#include <linux/interrupt.h>
+ #include <linux/slab.h>
+ #include <linux/err.h>
+ #include <linux/hwmon.h>
+@@ -25,12 +18,10 @@
+ #include <linux/sysfs.h>
+ #include <linux/hwmon-sysfs.h>
+ #include <linux/kobject.h>
+-#include <linux/clk.h>
+ #include <linux/pm_opp.h>
+ #include <linux/cpu.h>
+ #include <lantiq.h>
+-//#include <../arch/mips/lantiq/grx500/clk.h>
+-#include <../arch/mips/include/asm/uaccess.h>
++#include <linux/capability.h>
+ 
+ /** driver version, major number */
+ #define SPD_MON_VER_MAJOR	1
+@@ -45,23 +36,11 @@
+ #define _MKSTR(x)	_MKSTR_1(x)
+ #endif
+ 
+-
+ /** driver version as string */
+ #define SPD_MON_VER_STR	_MKSTR(SPD_MON_VER_MAJOR) "." \
+ 			_MKSTR(SPD_MON_VER_MINOR) "." \
+ 			_MKSTR(SPD_MON_VER_STEP)
+ 
+-/* ioctl definition */
+-#define TYPE 0xF4
+-#define LTQ_SPD_MON_IOC_VERSION			_IOR(TYPE, 0, struct ioctl_arg*)
+-#define LTQ_SPD_MON_IOC_READ			_IOR(TYPE, 1, struct ioctl_arg*)
+-#define LTQ_SPD_MON_IOC_GET_SPD			_IOR(TYPE, 2, struct ioctl_arg*)
+-#define LTQ_SPD_MON_IOC_SET_SAMPLE_RATE_SVT	_IOW(TYPE, 3, struct ioctl_arg*)
+-#define LTQ_SPD_MON_IOC_SET_SAMPLE_RATE_LVT	_IOW(TYPE, 4, struct ioctl_arg*)
+-#define LTQ_SPD_MON_IOC_SEL_CHANNEL		_IOW(TYPE, 5, struct ioctl_arg*)
+-#define LTQ_SPD_MON_IOC_SET_THRESHOLD	_IOW(TYPE, 6, struct ioctl_th_arg*)
+-#define LTQ_SPD_MON_IOC_WRITE			_IOW(TYPE, 7, struct ioctl_arg*)
+-
+ /* spd_mon register offset */
+ #define SPD_MON_CON			0x0
+ #define SPD_MON_SVT_DATA		0x4
+@@ -86,9 +65,6 @@
+ #define LTQ_SPD_MON_CH_MAX		3
+ 
+ /* spd_mon defines */
+-#define SPD_MON_VERSION LTQ_SPD_MON_VERSION(SPD_MON_VER_MAJOR, \
+-						SPD_MON_VER_MINOR, \
+-						SPD_MON_VER_STEP)
+ #define SPD_MON_NAME			"spdmon"
+ #define SPD_MON_DATA_TGL		0x20000
+ 
+@@ -176,9 +152,6 @@ struct spd_cnt {
+ static unsigned int base_freq_svt;
+ static unsigned int base_freq_lvt;
+ static struct spd_mon_ctrl ltq_spd_mon_ctrl;
+-static dev_t dev_num;			/* first device number */
+-static struct cdev c_dev;		/* character device structure */
+-static struct class *cl;		/* the device class */
+ static struct mutex spdmon_mutex;	/* mutex protection */
+ struct kobject *threshold_svt_kobj;
+ struct kobject *threshold_lvt_kobj;
+@@ -333,11 +306,14 @@ static int show_value(struct device *dev,
+ static int set_value(struct device *dev,
+ 	struct device_attribute *devattr, const char *buf, size_t count)
+ {
+-	int ch;
++	int ch, ret;
+ 	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
+-	int ret = kstrtoint(buf, 10, &ch);
+ 
+-	if (ret < 0)
++	if (!capable(CAP_SYS_ADMIN))
++		return -EPERM;
++
++	ret = kstrtoint(buf, 10, &ch);
++	if (ret)
+ 		return ret;
+ 
+ 	if (attr->index == SHOW_CHANNEL)
+@@ -375,43 +351,43 @@ static int set_value(struct device *dev,
+ }
+ 
+ static struct sensor_device_attribute spdmon_attributes[] = {
+-	SENSOR_ATTR(version, S_IRUGO, show_version, NULL, 0),
+-	SENSOR_ATTR(name, S_IRUGO, show_value, NULL, SHOW_NAME),
+-	SENSOR_ATTR(spd_data, S_IRUGO, show_value, NULL, SHOW_SPD_DATA),
+-	SENSOR_ATTR(speed_class, S_IRUGO, show_value, NULL, SHOW_CLASS),
+-	SENSOR_ATTR(speed_class_boot, S_IRUGO, show_value, NULL, SHOW_CLASS_B),
+-	SENSOR_ATTR(channel, S_IWUSR | S_IRUGO, show_value,
++	SENSOR_ATTR(version, S_IRUSR, show_version, NULL, 0),
++	SENSOR_ATTR(name, S_IRUSR, show_value, NULL, SHOW_NAME),
++	SENSOR_ATTR(spd_data, S_IRUSR, show_value, NULL, SHOW_SPD_DATA),
++	SENSOR_ATTR(speed_class, S_IRUSR, show_value, NULL, SHOW_CLASS),
++	SENSOR_ATTR(speed_class_boot, S_IRUSR, show_value, NULL, SHOW_CLASS_B),
++	SENSOR_ATTR(channel, S_IWUSR | S_IRUSR, show_value,
+ 		set_value, SHOW_CHANNEL),
+-	SENSOR_ATTR(rate_svt, S_IWUSR | S_IRUGO, show_value,
++	SENSOR_ATTR(rate_svt, S_IWUSR | S_IRUSR, show_value,
+ 		set_value, SHOW_RATE_SVT),
+-	SENSOR_ATTR(rate_lvt, S_IWUSR | S_IRUGO, show_value,
++	SENSOR_ATTR(rate_lvt, S_IWUSR | S_IRUSR, show_value,
+ 		set_value, SHOW_RATE_LVT),
+ };
+ 
+-static SENSOR_DEVICE_ATTR(svt_slow_low, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(svt_slow_low, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_SVT_SLOW_LOW);
+-static SENSOR_DEVICE_ATTR(svt_medium_low, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(svt_medium_low, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_SVT_MEDIUM_LOW);
+-static SENSOR_DEVICE_ATTR(svt_fast_low, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(svt_fast_low, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_SVT_FAST_LOW);
+-static SENSOR_DEVICE_ATTR(svt_slow_high, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(svt_slow_high, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_SVT_SLOW_HIGH);
+-static SENSOR_DEVICE_ATTR(svt_medium_high, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(svt_medium_high, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_SVT_MEDIUM_HIGH);
+-static SENSOR_DEVICE_ATTR(svt_fast_high, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(svt_fast_high, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_SVT_FAST_HIGH);
+ 
+-static SENSOR_DEVICE_ATTR(lvt_slow_low, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(lvt_slow_low, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_LVT_SLOW_LOW);
+-static SENSOR_DEVICE_ATTR(lvt_medium_low, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(lvt_medium_low, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_LVT_MEDIUM_LOW);
+-static SENSOR_DEVICE_ATTR(lvt_fast_low, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(lvt_fast_low, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_LVT_FAST_LOW);
+-static SENSOR_DEVICE_ATTR(lvt_slow_high, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(lvt_slow_high, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_LVT_SLOW_HIGH);
+-static SENSOR_DEVICE_ATTR(lvt_medium_high, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(lvt_medium_high, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_LVT_MEDIUM_HIGH);
+-static SENSOR_DEVICE_ATTR(lvt_fast_high, S_IWUSR | S_IRUGO,
++static SENSOR_DEVICE_ATTR(lvt_fast_high, S_IWUSR | S_IRUSR,
+ 	show_value, set_value, SHOW_THRESHOLD_LVT_FAST_HIGH);
+ 
+ static struct attribute *threshold_svt_attrs[] = {
+@@ -746,52 +722,6 @@ static void spd_mon_get_spd_data(void)
+ }
+ EXPORT_SYMBOL(spd_mon_get_spd_data);
+ 
+-#if 0 /*I will keep this for later use*/
+-static enum spd_class_t spd_mon_get_speed_class(struct spd_cnt *smcl)
+-{
+-	u32 lvt_spd, svt_spd;
+-
+-	spd_mon_get_spd_data();
+-
+-	/* Compare the values for all channels and found the lowest value */
+-	if (spd_mon_data[0].lvt > spd_mon_data[1].lvt)
+-		lvt_spd = spd_mon_data[1].lvt;
+-	else
+-		lvt_spd = spd_mon_data[0].lvt;
+-
+-	if (lvt_spd > spd_mon_data[2].lvt)
+-		lvt_spd = spd_mon_data[2].lvt;
+-
+-	if (spd_mon_data[0].svt > spd_mon_data[1].svt)
+-		svt_spd = spd_mon_data[1].svt;
+-	else
+-		svt_spd = spd_mon_data[0].svt;
+-
+-	if (svt_spd > spd_mon_data[2].svt)
+-		svt_spd = spd_mon_data[2].svt;
+-
+-	/*Compare with threshold and Decide device class*/
+-	/*Device is fast if both LVT and SVT class are fast; */
+-	if ((lvt_spd > spd_lvt_f_low && lvt_spd < spd_lvt_f_high) &&
+-	    (svt_spd > spd_svt_f_low && svt_spd < spd_svt_f_high))
+-		return FAST; /* FAST DEVICE */
+-
+-	/*Device is Medium if LVT class is fast
+-		or Med and SVT class is fast or Med;*/
+-	if ((lvt_spd > spd_lvt_m_low && lvt_spd < spd_lvt_f_high) &&
+-	    (svt_spd > spd_svt_m_low && svt_spd < spd_svt_f_high))
+-		return MEDIUM; /* MEDIUM DEVICE */
+-
+-	if ((lvt_spd > spd_lvt_s_low && lvt_spd < spd_lvt_f_high) &&
+-	    (svt_spd > spd_svt_s_low && svt_spd < spd_svt_f_high))
+-		return SLOW; /* SLOW DEVICE */
+-
+-	return UNDEF;
+-}
+-EXPORT_SYMBOL(spd_mon_get_speed_class);
+-#endif
+-
+-
+ static enum spd_class_t spd_mon_get_speed_class(struct spd_cnt *smcl)
+ {
+ 	int i;
+@@ -811,15 +741,14 @@ static enum spd_class_t spd_mon_get_speed_class(struct spd_cnt *smcl)
+ 		/*Compare with threshold and Decide device class*/
+ 		/*Device is fast if SVT class are fast; */
+ 		if ((svt_spd >= spd_svt_f_low) && (svt_spd <= spd_svt_f_high))
+-			fast++; /* FAST DEVICE */
++			fast++;
+ 
+ 		/*Device is Medium if SVT class is medium*/
+ 		if ((svt_spd >= spd_svt_m_low) && (svt_spd <= spd_svt_m_high))
+-			med++; /* MEDIUM DEVICE */
++			med++;
+ 
+ 		if ((svt_spd >= spd_svt_s_low) && (svt_spd <= spd_svt_s_high))
+-			slow++; /* SLOW DEVICE */
+-
++			slow++;
+ 	}
+ 
+ 	if (smcl != NULL) {
+@@ -838,18 +767,6 @@ static enum spd_class_t spd_mon_get_speed_class(struct spd_cnt *smcl)
+ 	if ((slow > fast) && (slow > med))
+ 		spd_mon_res = SLOW0;
+ 
+-#if 0
+-	/*now check this SMON value against the fused SMON value*/
+-	smon_fused = spd_mon_get_fused_svt_spc();
+-	if ((smon_fused == spd_mon_res) || (smon_fused == UNDEF))
+-		spc = spd_mon_res;
+-	else if ((smon_fused == SLOW0) || (spd_mon_res == SLOW0))
+-		spc = SLOW0;
+-	else if ((smon_fused == MEDIUM0) || (spd_mon_res == MEDIUM0))
+-		spc = MEDIUM0;
+-	else
+-		spc = FAST0;
+-#endif
+ 	/* we use only the fused values from now on */
+ 	smon_fused = spd_mon_get_fused_svt_spc();
+ 	if (smon_fused == UNDEF)
+@@ -857,7 +774,6 @@ static enum spd_class_t spd_mon_get_speed_class(struct spd_cnt *smcl)
+ 	else
+ 		spc = smon_fused;
+ 
+-
+ 	/*now check this device class against the fused Vddmin*/
+ 	spc_vddmin = spd_mon_get_fused_vddmin_spc(spc);
+ 	if (spc_vddmin == UNDEF)
+@@ -867,147 +783,13 @@ static enum spd_class_t spd_mon_get_speed_class(struct spd_cnt *smcl)
+ }
+ EXPORT_SYMBOL(spd_mon_get_speed_class);
+ 
+-
+-static int spd_mon_open(struct inode *inode, struct file *file)
+-{
+-	return 0;
+-}
+-
+-static long spd_mon_ioctl(struct file *file,	unsigned int cmd,
+-	unsigned long arg)
+-{
+-	int ret = 0;
+-	u32 data = 0x0;
+-	u32 offset = 0x0;
+-	struct spd_mon_ctrl *pctrl;
+-	u32 low = 0, high = 0;
+-
+-	pctrl = &ltq_spd_mon_ctrl;
+-
+-	switch (cmd) {
+-	case LTQ_SPD_MON_IOC_VERSION:
+-		data = SPD_MON_VERSION;
+-		pr_debug("[%s]SPD_MON_VERSION=0x%x major=%d minor=%d step=%d\n", __func__, SPD_MON_VERSION, SPD_MON_VER_MAJOR, SPD_MON_VER_MINOR, SPD_MON_VER_STEP);
+-		put_user(data, (u32 __user *) (arg+0x4));
+-		break;
+-	case LTQ_SPD_MON_IOC_SET_SAMPLE_RATE_SVT:
+-		ret = get_user(offset, (u32 __user *) (arg));
+-		ret = get_user(data, (u32 __user *) (arg+0x4));
+-		pr_debug("[%s]parameter1=0x%x parameter2=0x%x\n", __func__, offset, data);
+-		if (ret == 0) {
+-			printk("[%s]Set Sample Rate SVT=%d\n", __func__, data);
+-			spd_mon_set_sample_rate_svt(data);
+-		} else {
+-			dev_err(pctrl->dev, "get 0x%x from user space\n",
+-				(unsigned int)arg);
+-			ret = -EINVAL;
+-		}
+-		break;
+-	case LTQ_SPD_MON_IOC_SET_SAMPLE_RATE_LVT:
+-		ret = get_user(offset, (u32 __user *) (arg));
+-		ret = get_user(data, (u32 __user *) (arg+0x4));
+-		pr_debug("[%s]parameter1=0x%x parameter2=0x%x\n", __func__, offset, data);
+-		if (ret == 0) {
+-			spd_mon_set_sample_rate_lvt(data);
+-			pr_debug("[%s]Set Sample Rate LVT=%d\n", __func__, data);
+-		} else {
+-			dev_err(pctrl->dev, "get 0x%x from user space\n",
+-				(unsigned int)arg);
+-			ret = -EINVAL;
+-		}
+-		break;
+-	case LTQ_SPD_MON_IOC_SEL_CHANNEL:
+-		ret = get_user(offset, (u32 __user *) (arg));
+-		ret = get_user(data, (u32 __user *) (arg+0x4));
+-		pr_debug("[%s]parameter1=0x%x parameter2=0x%x\n", __func__, offset, data);
+-		if (ret == 0) {
+-			spd_mon_sel_channel(data);
+-			pr_debug("[%s]Select Channel=%d\n", __func__, data);
+-		} else {
+-			dev_err(pctrl->dev, "get 0x%x from user space\n",
+-				(unsigned int)arg);
+-			ret = -EINVAL;
+-		}
+-		break;
+-	case LTQ_SPD_MON_IOC_SET_THRESHOLD:
+-		ret = get_user(offset, (u32 __user *) (arg));
+-		if (ret == 0) {
+-			ret = get_user(data, (u32 __user *) (arg+0x4));
+-			if (ret == 0) {
+-				/* set threshold */
+-				get_user(low, (u32 __user *) (arg+0x8));
+-				get_user(high, (u32 __user *) (arg+0xc));
+-				pr_debug("[%s]parameter1=0x%x parameter2=0x%x parameter3=0x%x parameter4=0x%x\n", __func__, offset, data, low, high);
+-				spd_mon_set_threshold(offset, data, low, high);
+-				pr_debug("[%s]Set Threshold offset=%d data=%d low=%d high=%d\n", __func__, offset, data, low, high);
+-			} else {
+-				dev_err(pctrl->dev, "get 0x%x from user space\n",
+-					(unsigned int)arg);
+-				ret = -EINVAL;
+-			}
+-		} else {
+-			dev_err(pctrl->dev, "get 0x%x from user space\n",
+-				(unsigned int)arg);
+-			ret = -EINVAL;
+-		}
+-		break;
+-	case LTQ_SPD_MON_IOC_GET_SPD:
+-		data = spd_mon_get_speed_class(NULL);
+-		put_user(data, (u32 __user *) (arg+0x4));
+-		break;
+-	case LTQ_SPD_MON_IOC_READ:
+-		ret = get_user(offset, (u32 __user *) (arg));
+-		pr_debug("[%s]parameter1=0x%x\n", __func__, offset);
+-		if (ret == 0) {
+-			/* check offset value */
+-			if (offset <= SPD_MON_LVT_DATA) {
+-				data = ltq_r32(pctrl->membase + offset);
+-				put_user(data, (u32 __user *) (arg+0x4));
+-				pr_debug("[%s]Read data offset=0x%x data=0x%x\n", __func__, offset, data);
+-			} else
+-				ret = -EINVAL;
+-		} else {
+-			dev_err(pctrl->dev, "get 0x%x from user space\n",
+-				(unsigned int)arg);
+-			ret = -EINVAL;
+-		}
+-		break;
+-	case LTQ_SPD_MON_IOC_WRITE:
+-		ret = get_user(offset, (u32 __user *) (arg));
+-		if (ret == 0) {
+-			ret = get_user(data, (u32 __user *) (arg+0x4));
+-			pr_debug("[%s]parameter1=0x%x parameter2=0x%x\n", __func__, offset, data);
+-			if (ret == 0) {
+-				if (offset <= SPD_MON_LVT_DATA) {
+-					ltq_w32(data, pctrl->membase + offset);
+-					pr_debug("[%s]Write data offset=0x%x data=0x%x\n", __func__, offset, data);
+-				} else
+-					ret = -EINVAL;
+-			} else
+-				ret = -EINVAL;
+-		} else {
+-			dev_err(pctrl->dev, "get 0x%x from user space\n",
+-				(unsigned int)arg);
+-			ret = -EINVAL;
+-		}
+-		break;
+-	}
+-
+-	return ret;
+-}
+-
+-static const struct file_operations spd_mon_fops = {
+-	.owner = THIS_MODULE,
+-	.open = spd_mon_open,
+-	.unlocked_ioctl = spd_mon_ioctl,
+-};
+-
+ static int spd_mon_remove(struct platform_device *pdev)
+ {
+ 	struct spd_mon_ctrl *pctrl = platform_get_drvdata(pdev);
+ 	int i;
+ 
+ 	hwmon_device_unregister(pctrl->hwmon_dev);
++
+ 	for (i = 0; i < DEVICE_ATTR_NUM; i++)
+ 		device_remove_file(&pdev->dev, &spdmon_attributes[i].dev_attr);
+ 
+@@ -1033,60 +815,36 @@ static int spd_mon_probe(struct platform_device *pdev)
+ 	int ret = 0;
+ 	struct resource *res;
+ 	int i;
+-	struct device *spd_mon_device = NULL;
+ 	struct device *cpu_dev = get_cpu_device(0);
+ 	struct spd_mon_ctrl *pctrl = &ltq_spd_mon_ctrl;
+ 	unsigned int chip_id = ltq_get_cpu_id();
+ 	unsigned int chip_rev = ltq_get_soc_rev();
+-	/*struct spd_cnt smcl;*/
+ 	char *prop_name;
+ 
+ 	threshold_svt_kobj = NULL;
+ 	threshold_lvt_kobj = NULL;
+ 	memset(pctrl, 0, sizeof(ltq_spd_mon_ctrl));
++
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+-	if (!res)
+-		panic("Failed to get spd_mon resources\n");
++	if (!res) {
++		dev_err(&pdev->dev, "Failed to get spd_mon resources\n");
++		return -EINVAL;
++	};
+ 
+ 	pctrl->phybase = res->start;
+ 	pctrl->membase = devm_ioremap_resource(&pdev->dev, res);
+-	if (!pctrl->membase)
+-		panic("Failed to remap spd_mon resources\n");
++	if (IS_ERR(pctrl->membase)) {
++		dev_err(&pdev->dev, "Failed to remap spd_mon resources\n");
++		return PTR_ERR(pctrl->membase);
++	}
+ 
+ 	dev_info(&pdev->dev, "base address: 0x%x\t", (u32)pctrl->membase);
+ 	dev_info(&pdev->dev, "PHY base address: 0x%x\n", pctrl->phybase);
+ 
+ 	pctrl->dev = &pdev->dev;
+ 
+-	/* Link platform with driver data for retrieving */
+ 	platform_set_drvdata(pdev, pctrl);
+ 
+-	/* register char dev */
+-	ret = alloc_chrdev_region(&dev_num, 0, 1, SPD_MON_NAME);
+-	if (ret < 0) {
+-		pr_err("spd_mon alloc_chrdev_region failed\n");
+-		return ret;
+-	} else
+-	pr_alert("device number :%d\n", MAJOR(dev_num));
+-
+-	cl = class_create(THIS_MODULE, SPD_MON_NAME);
+-	if (IS_ERR(cl))  {
+-		pr_err("spd_mon Class Create failed\n");
+-		return -ENODEV;
+-	}
+-
+-	spd_mon_device = device_create(cl, NULL /*no parent device*/, dev_num,
+-		NULL, SPD_MON_NAME"%d", MINOR(dev_num));
+-	if (IS_ERR(spd_mon_device)) {
+-		pr_err("spd_mon Device Registration failed\n");
+-		return -ENODEV;
+-	}
+-	cdev_init(&c_dev, &spd_mon_fops);
+-
+-	ret = cdev_add(&c_dev, dev_num, 1);
+-	if (ret)
+-		pr_err("spd_mon Device addition failed\n");
+-
+ 	for (i = 0; i < DEVICE_ATTR_NUM; i++) {
+ 		ret = device_create_file(&pdev->dev,
+ 			&spdmon_attributes[i].dev_attr);
+@@ -1135,11 +893,6 @@ static int spd_mon_probe(struct platform_device *pdev)
+ 
+ 	dev_info(pctrl->dev, "spd_mon driver : init done !!\n");
+ 
+-	/*
+-	pr_alert("speed_class=%s ", spc[spd_mon_get_speed_class(&smcl)]);
+-	pr_alert("slow=%d, med=%d, fast=%d\n", smcl.slow, smcl.medi, smcl.fast);
+-	*/
+-
+ 	if (chip_rev == 1) { /*V1.1*/
+ 		chip_type = GRX350;
+ 	} else {
+@@ -1157,6 +910,7 @@ static int spd_mon_probe(struct platform_device *pdev)
+ 		       break;
+ 		}
+ 	}
++
+ 	ltq_grx500_set_speed_grade(spd_mon_get_speed_class(NULL));
+ 
+ 	prop_name = spc[ltq_grx500_get_speed_grade()];
+@@ -1208,10 +962,6 @@ subsys_initcall(spd_mon_init);
+ 
+ static void __exit spd_mon_exit(void)
+ {
+-	cdev_del(&c_dev);
+-	device_destroy(cl, dev_num);
+-	class_destroy(cl);
+-	unregister_chrdev_region(dev_num, 1);
+ 	platform_driver_unregister(&spd_mon_driver);
+ }
+ 

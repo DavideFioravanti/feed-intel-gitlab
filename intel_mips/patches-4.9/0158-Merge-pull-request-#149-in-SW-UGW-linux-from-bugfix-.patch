@@ -1,0 +1,31 @@
+From de58a815211f006b0f1aa23561832abe5397e6a2 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 28 Aug 2018 07:28:59 +0200
+Subject: [PATCH] Merge pull request #149 in SW_UGW/linux from
+ bugfix/UGW_SW-28041-8.x-mainline-l2tp-vdsl to master
+
+* commit '5dca8ac830e5bf98ae9f39cf04d5cf6c3babfdae':
+  UGW_SW-28041:Fix for L2TP not working on VDSL PTM
+---
+ drivers/net/ethernet/lantiq/ppa/ppa_drv_wrapper.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/net/ethernet/lantiq/ppa/ppa_drv_wrapper.c b/drivers/net/ethernet/lantiq/ppa/ppa_drv_wrapper.c
+index eb31a5cdb863..443c030f25fb 100644
+--- a/drivers/net/ethernet/lantiq/ppa/ppa_drv_wrapper.c
++++ b/drivers/net/ethernet/lantiq/ppa/ppa_drv_wrapper.c
+@@ -279,6 +279,14 @@ int32_t ppa_drv_reset_tmu_qos_mib (
+ }
+ EXPORT_SYMBOL(ppa_drv_reset_tmu_qos_mib);
+ #endif
++
++int32_t ppa_drv_tmu_set_checksum_queue_map (uint32_t pmac_port)
++{
++	if( !tmu_hal_set_checksum_queue_map_hook_fn ) return PPA_EINVAL;
++	return tmu_hal_set_checksum_queue_map_hook_fn (pmac_port);
++
++}
++EXPORT_SYMBOL(ppa_drv_tmu_set_checksum_queue_map);
+ #endif
+ 
+ int ppa_drv_get_dslwan_qid_with_vcc(struct atm_vcc *vcc)

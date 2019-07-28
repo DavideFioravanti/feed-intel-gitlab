@@ -1,0 +1,25 @@
+From 660b71a09bdde0e69a2e64f60efc40b0a2dabeb2 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 22 Aug 2018 09:42:15 +0200
+Subject: [PATCH] Merge pull request #124 in SW_UGW/linux from
+ bugfix/dp-provie-qid-to-caller to master
+
+* commit 'caec53d957165c5b50f5c0031386f0b427369275':
+  datapath: provide the allocated queue ID to the caller
+---
+ drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+index 179172f2fe5d..ac34148a5285 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+@@ -1145,6 +1145,8 @@ static int subif_hw_set(int inst, int portid, int subif_ix,
+ 	if (q_port.f_deq_port_en)
+ 		data->act = TRIGGER_CQE_DP_ENABLE;
+ #endif
++	/* update caller dp_subif_data.q_id with allocated queue number */
++	data->subif_data->q_id = q_port.qid;
+ 	/*update subif table */
+ 	port_info->subif_info[subif_ix].qid = q_port.qid;
+ 	port_info->subif_info[subif_ix].q_node = q_port.q_node;

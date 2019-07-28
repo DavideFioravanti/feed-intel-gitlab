@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006-2011 OpenWrt.org
+
+START=12
+
+boot() {
+	##
+	# need to call /sbin/wifi config manually for now
+	#
+	# NOTE: the mac80211 package typically does this
+	#       but it must be disable for wave500 drivers
+	#       to compile properly. this HACK should be
+	#       removed in the future and fixed in pkg.
+	#
+	# NOTE: current intel.sh script calls insmod for
+	#       wave500 drivers and thus needs to be called
+	#       at each boot, not just after config reset.
+	##
+
+	/sbin/wifi config
+}

@@ -1,0 +1,35 @@
+From b9dc8759a4d5b336e25c618e7aec88b8d46f26ed Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Thu, 4 Apr 2019 08:55:49 +0200
+Subject: [PATCH] Merge pull request #629 in SW_UGW/linux from
+ bugfix/UGW_SW-37237-8.3.1-multicast-multicast-helper-table-entries-are-not-updated
+ to 8.3.1
+
+* commit '13467306bf41890c3648a91a929e431122ab1e23':
+  UGW_SW-37237: Removal of null check of rxnetdev from VAP unregister case
+---
+ net/mcast_helper/mcast_helper.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/net/mcast_helper/mcast_helper.c b/net/mcast_helper/mcast_helper.c
+index c38697b1017b..9aeb938a2b9a 100644
+--- a/net/mcast_helper/mcast_helper.c
++++ b/net/mcast_helper/mcast_helper.c
+@@ -1796,7 +1796,7 @@ static long mcast_helper_ioctl(struct file *f, unsigned int cmd, unsigned long a
+ 			rxnetdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.rxIntrfName);
+ 
+ #endif
+-			if (rxnetdev == NULL || netdev == NULL)
++			if (netdev == NULL)
+ 				return -ENXIO;
+ 
+ 			mch_br_capture_pkt = 0;
+@@ -1813,7 +1813,7 @@ static long mcast_helper_ioctl(struct file *f, unsigned int cmd, unsigned long a
+ 			netdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.memIntrfName);
+ 			rxnetdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.rxIntrfName);
+ #endif
+-			if (rxnetdev == NULL || netdev == NULL)
++			if (netdev == NULL)
+ 				return -ENXIO;
+ 
+ 			mch_br_capture_pkt = 0;

@@ -1,0 +1,191 @@
+From f8051c6ed8ed08c2af6924b485066951cab9547f Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 22 Feb 2019 13:52:55 +0100
+Subject: [PATCH] Merge pull request #502 in SW_UGW/linux from
+ feature/PONRTSYS-2169-backport-tc-flower-ip_tos-attribute-handling to master
+
+* commit 'e6354bb51582989d3fd2d0fe839f6b4dbff8d27b':
+  net/flow_dissector: add support for dissection of misc ip header fields
+  net/sched: cls_flower: add support for matching on ip tos and ttl
+---
+ include/net/flow_dissector.h | 11 +++++++++++
+ net/core/flow_dissector.c    | 40 ++++++++++++++++++++++++++++++++++++++++
+ net/sched/cls_flower.c       | 35 +++++++++++++++++++++++++++++++++--
+ 3 files changed, 84 insertions(+), 2 deletions(-)
+
+diff --git a/include/net/flow_dissector.h b/include/net/flow_dissector.h
+index 4cbed30b5868..aa9a823c9392 100644
+--- a/include/net/flow_dissector.h
++++ b/include/net/flow_dissector.h
+@@ -116,6 +116,16 @@ struct flow_dissector_key_eth_addrs {
+ 	unsigned char src[ETH_ALEN];
+ };
+ 
++/**
++ * struct flow_dissector_key_ip:
++ * @tos: tos
++ * @ttl: ttl
++ */
++struct flow_dissector_key_ip {
++	__u8	tos;
++	__u8	ttl;
++};
++
+ enum flow_dissector_key_id {
+ 	FLOW_DISSECTOR_KEY_CONTROL, /* struct flow_dissector_key_control */
+ 	FLOW_DISSECTOR_KEY_BASIC, /* struct flow_dissector_key_basic */
+@@ -128,6 +138,7 @@ enum flow_dissector_key_id {
+ 	FLOW_DISSECTOR_KEY_FLOW_LABEL, /* struct flow_dissector_key_flow_tags */
+ 	FLOW_DISSECTOR_KEY_GRE_KEYID, /* struct flow_dissector_key_keyid */
+ 	FLOW_DISSECTOR_KEY_MPLS_ENTROPY, /* struct flow_dissector_key_keyid */
++	FLOW_DISSECTOR_KEY_IP, /* struct flow_dissector_key_ip */
+ 	FLOW_DISSECTOR_KEY_CVLAN, /* struct flow_dissector_key_flow_vlan */
+ 	FLOW_DISSECTOR_KEY_MAX,
+ };
+diff --git a/net/core/flow_dissector.c b/net/core/flow_dissector.c
+index 9649d3c0d092..f3c32cea3d74 100644
+--- a/net/core/flow_dissector.c
++++ b/net/core/flow_dissector.c
+@@ -91,6 +91,40 @@ __be32 __skb_flow_get_ports(const struct sk_buff *skb, int thoff, u8 ip_proto,
+ }
+ EXPORT_SYMBOL(__skb_flow_get_ports);
+ 
++static void
++__skb_flow_dissect_ipv4(const struct sk_buff *skb,
++			struct flow_dissector *flow_dissector,
++			void *target_container, void *data, const struct iphdr *iph)
++{
++	struct flow_dissector_key_ip *key_ip;
++
++	if (!dissector_uses_key(flow_dissector, FLOW_DISSECTOR_KEY_IP))
++		return;
++
++	key_ip = skb_flow_dissector_target(flow_dissector,
++					   FLOW_DISSECTOR_KEY_IP,
++					   target_container);
++	key_ip->tos = iph->tos;
++	key_ip->ttl = iph->ttl;
++}
++
++static void
++__skb_flow_dissect_ipv6(const struct sk_buff *skb,
++			struct flow_dissector *flow_dissector,
++			void *target_container, void *data, const struct ipv6hdr *iph)
++{
++	struct flow_dissector_key_ip *key_ip;
++
++	if (!dissector_uses_key(flow_dissector, FLOW_DISSECTOR_KEY_IP))
++		return;
++
++	key_ip = skb_flow_dissector_target(flow_dissector,
++					   FLOW_DISSECTOR_KEY_IP,
++					   target_container);
++	key_ip->tos = ipv6_get_dsfield(iph);
++	key_ip->ttl = iph->hop_limit;
++}
++
+ /**
+  * __skb_flow_dissect - extract the flow_keys struct and return it
+  * @skb: sk_buff to extract the flow from, can be NULL if the rest are specified
+@@ -193,6 +227,9 @@ bool __skb_flow_dissect(const struct sk_buff *skb,
+ 			}
+ 		}
+ 
++		__skb_flow_dissect_ipv4(skb, flow_dissector,
++					target_container, data, iph);
++
+ 		if (flags & FLOW_DISSECTOR_F_STOP_AT_L3)
+ 			goto out_good;
+ 
+@@ -238,6 +275,9 @@ bool __skb_flow_dissect(const struct sk_buff *skb,
+ 				goto out_good;
+ 		}
+ 
++		__skb_flow_dissect_ipv6(skb, flow_dissector,
++					target_container, data, iph);
++
+ 		if (flags & FLOW_DISSECTOR_F_STOP_AT_L3)
+ 			goto out_good;
+ 
+diff --git a/net/sched/cls_flower.c b/net/sched/cls_flower.c
+index 4dfbf15543a3..a57c66f1de7f 100644
+--- a/net/sched/cls_flower.c
++++ b/net/sched/cls_flower.c
+@@ -45,6 +45,7 @@ struct fl_flow_key {
+ 		struct flow_dissector_key_ipv4_addrs enc_ipv4;
+ 		struct flow_dissector_key_ipv6_addrs enc_ipv6;
+ 	};
++	struct flow_dissector_key_ip ip;
+ } __aligned(BITS_PER_LONG / 8); /* Ensure that we can do comparisons as longs. */
+ 
+ struct fl_flow_mask_range {
+@@ -447,6 +448,19 @@ static void fl_set_key_vlan(struct nlattr **tb,
+ 	key_mask->vlan_tpid = cpu_to_be16(~0);
+ }
+ 
++static void fl_set_key_ip(struct nlattr **tb,
++			  struct flow_dissector_key_ip *key,
++			  struct flow_dissector_key_ip *mask)
++{
++		fl_set_key_val(tb, &key->tos, TCA_FLOWER_KEY_IP_TOS,
++			       &mask->tos, TCA_FLOWER_KEY_IP_TOS_MASK,
++			       sizeof(key->tos));
++
++		fl_set_key_val(tb, &key->ttl, TCA_FLOWER_KEY_IP_TTL,
++			       &mask->ttl, TCA_FLOWER_KEY_IP_TTL_MASK,
++			       sizeof(key->ttl));
++}
++
+ static int fl_set_key(struct net *net, struct nlattr **tb,
+ 		      struct fl_flow_key *key, struct fl_flow_key *mask)
+ {
+@@ -504,6 +518,7 @@ static int fl_set_key(struct net *net, struct nlattr **tb,
+ 		fl_set_key_val(tb, &key->basic.ip_proto, TCA_FLOWER_KEY_IP_PROTO,
+ 			       &mask->basic.ip_proto, TCA_FLOWER_UNSPEC,
+ 			       sizeof(key->basic.ip_proto));
++		fl_set_key_ip(tb, &key->ip, &mask->ip);
+ 	}
+ 
+ 	if (tb[TCA_FLOWER_KEY_IPV4_SRC] || tb[TCA_FLOWER_KEY_IPV4_DST]) {
+@@ -640,6 +655,8 @@ static void fl_init_dissector(struct cls_fl_head *head,
+ 	FL_KEY_SET_IF_MASKED(&mask->key, keys, cnt,
+ 			     FLOW_DISSECTOR_KEY_PORTS, tp);
+ 	FL_KEY_SET_IF_MASKED(&mask->key, keys, cnt,
++			     FLOW_DISSECTOR_KEY_IP, ip);
++	FL_KEY_SET_IF_MASKED(&mask->key, keys, cnt,
+ 			     FLOW_DISSECTOR_KEY_VLAN, vlan);
+ 	FL_KEY_SET_IF_MASKED(&mask->key, keys, cnt,
+ 			     FLOW_DISSECTOR_KEY_CVLAN, cvlan);
+@@ -877,6 +894,19 @@ static int fl_dump_key_val(struct sk_buff *skb,
+ 	return 0;
+ }
+ 
++static int fl_dump_key_ip(struct sk_buff *skb,
++			  struct flow_dissector_key_ip *key,
++			  struct flow_dissector_key_ip *mask)
++{
++	if (fl_dump_key_val(skb, &key->tos, TCA_FLOWER_KEY_IP_TOS, &mask->tos,
++			    TCA_FLOWER_KEY_IP_TOS_MASK, sizeof(key->tos)) ||
++	    fl_dump_key_val(skb, &key->ttl, TCA_FLOWER_KEY_IP_TTL, &mask->ttl,
++			    TCA_FLOWER_KEY_IP_TTL_MASK, sizeof(key->ttl)))
++		return -1;
++
++	return 0;
++}
++
+ static int fl_dump_key_vlan(struct sk_buff *skb,
+ 			    int vlan_id_key, int vlan_prio_key,
+ 			    struct flow_dissector_key_vlan *vlan_key,
+@@ -970,9 +1000,10 @@ static int fl_dump(struct net *net, struct tcf_proto *tp, unsigned long fh,
+ 
+ 	if ((key->basic.n_proto == htons(ETH_P_IP) ||
+ 	     key->basic.n_proto == htons(ETH_P_IPV6)) &&
+-	    fl_dump_key_val(skb, &key->basic.ip_proto, TCA_FLOWER_KEY_IP_PROTO,
++	    (fl_dump_key_val(skb, &key->basic.ip_proto, TCA_FLOWER_KEY_IP_PROTO,
+ 			    &mask->basic.ip_proto, TCA_FLOWER_UNSPEC,
+-			    sizeof(key->basic.ip_proto)))
++			    sizeof(key->basic.ip_proto)) ||
++	    fl_dump_key_ip(skb, &key->ip, &mask->ip)))
+ 		goto nla_put_failure;
+ 
+ 	if (key->control.addr_type == FLOW_DISSECTOR_KEY_IPV4_ADDRS &&

@@ -1,0 +1,312 @@
+From 1d87caace766be006dc26c4c194877f542ed167d Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 1 Aug 2018 14:33:21 +0200
+Subject: [PATCH] Merge pull request #87 in SW_UGW/linux from
+ feature/PMCPESYS-51-add-multi-sensor-support-in-ltq_thermal-driver to master
+
+* commit '8b552a992e52b3791212e95cdeda4c2015afc602':
+  thermal: ltq: Fix checkpatch errors
+  PMCPESYS-51: thermal: ltq: Move sensor ops under sensor struct
+  PMCPESYS-51: thermal: ltq: Don't hardcode no. of sensor cells
+  PMCPESYS-51: thermal: ltq: Use sensor id to read proper sensor
+  PMCPESYS-51: thermal: ltq: Remove unused variables
+  PMCPESYS-51: thermal: ltq: Add multi-sensors support
+  PMCPESYS-51: thermal: ltq: Introduce ltq_thermal_sensor struct
+  PMCPESYS-51: thermal: ltq: Remove unused soc and name
+---
+ drivers/thermal/ltq_thermal.c | 143 +++++++++++++++++++++++++-----------------
+ 1 file changed, 87 insertions(+), 56 deletions(-)
+
+diff --git a/drivers/thermal/ltq_thermal.c b/drivers/thermal/ltq_thermal.c
+index e102e5d5927c..2438926c6545 100644
+--- a/drivers/thermal/ltq_thermal.c
++++ b/drivers/thermal/ltq_thermal.c
+@@ -29,31 +29,34 @@
+ 
+ #include  "thermal_core.h"
+ 
+-enum ltq_soc {
+-	LTQ_SOC_GRX500
++struct ltq_thermal_sensor;
++
++struct ltq_thermal_sensor_ops {
++	void (*init)(struct ltq_thermal_sensor *s);
++	int (*get_temp)(struct ltq_thermal_sensor *s);
+ };
+ 
+-struct ltq_thermal;
++struct ltq_thermal_sensor {
++	int id;
++
++	struct thermal_zone_device *tzd;
++
++	const struct ltq_thermal_sensor_ops *ops;
+ 
+-struct ltq_thermal_tsens_data {
+-	enum ltq_soc	soc;
+-	char		*name;
++	int temp;
++	int last_temp;
++	int emul_temp;
+ 
+-	void (*init)(struct platform_device *pdev, struct ltq_thermal *p);
+-	int (*get_temp)(struct ltq_thermal *p);
++	void *drvdata;
+ };
+ 
+ struct ltq_thermal {
+ 	struct regmap	*chiptop;
+ 
+ 	struct device *dev;
+-	struct ltq_thermal_tsens_data *tdata;
+-	struct thermal_zone_device *tzd;
+-
+-	int temp;
+-	int last_temp;
+ 
+-	int emul_temp;
++	struct ltq_thermal_sensor *sensors;
++	int count;
+ };
+ 
+ #define CTRL_REG  0x100
+@@ -72,6 +75,7 @@ struct ltq_thermal {
+ #define TSOVH_INT_DIS		0
+ 
+ #define CH_SEL_MASK		0x700
++#define CH_SEL_OFFSET		0x8
+ 
+ #define TS_EN_MASK		0x800
+ #define TS_EN_WORKING		0
+@@ -83,8 +87,10 @@ struct ltq_thermal {
+ #define	TS_CODE		0x00000FFF
+ #define	TS_DV		0x80000000
+ 
+-void  ltq_grx500_init(struct platform_device *pdev, struct ltq_thermal *priv)
++void  ltq_grx500_init(struct ltq_thermal_sensor *sensor)
+ {
++	struct ltq_thermal *priv = sensor->drvdata;
++
+ 	dev_dbg(priv->dev, "%s\n", __func__);
+ 
+ 	/* Stop data conversion, disable overheat IRQ, power down sensor */
+@@ -95,7 +101,7 @@ void  ltq_grx500_init(struct platform_device *pdev, struct ltq_thermal *priv)
+ 
+ 	/* Power on the sensor */
+ 	regmap_update_bits(priv->chiptop, CTRL_REG, TS_EN_MASK,
+-				 TS_EN_WORKING);
++			   TS_EN_WORKING);
+ 	usleep_range(160, 300);  /* required by TS spec */
+ 
+ 	/* Start data conversion */
+@@ -104,10 +110,10 @@ void  ltq_grx500_init(struct platform_device *pdev, struct ltq_thermal *priv)
+ 
+ 	/* Stop data conversion and power down the sensor*/
+ 	regmap_update_bits(priv->chiptop, CTRL_REG, SOC_MASK | TS_EN_MASK,
+-			   SOC_NC|TS_EN_SHUNT);
++			   SOC_NC | TS_EN_SHUNT);
+ }
+ 
+-int ltq_grx500_get_temp(struct ltq_thermal *priv)
++int ltq_grx500_get_temp(struct ltq_thermal_sensor *sensor)
+ {
+ 	u32 reg;
+ 	bool ready = false;
+@@ -115,15 +121,18 @@ int ltq_grx500_get_temp(struct ltq_thermal *priv)
+ 	int a0 = -40;
+ 	int v1 = 3800;
+ 	int v2 = 3421;
++	struct ltq_thermal *priv = sensor->drvdata;
+ 
++	if (!priv)
++		return -EINVAL;
+ 
+ 	/* Select a channel */
+-	regmap_update_bits(priv->chiptop, CTRL_REG, CH_SEL_MASK, 0x100);
++	regmap_update_bits(priv->chiptop, CTRL_REG, CH_SEL_MASK,
++			   sensor->id << CH_SEL_OFFSET);
+ 
+ 	/* Enable the temp sensor */
+-	regmap_update_bits(priv->chiptop, CTRL_REG, SOC_MASK|TS_EN_MASK,
+-				SOC_START | TS_EN_WORKING);
+-
++	regmap_update_bits(priv->chiptop, CTRL_REG, SOC_MASK | TS_EN_MASK,
++			   SOC_START | TS_EN_WORKING);
+ 
+ 	/* Wait for and read out the measurement */
+ 	while (!ready) {
+@@ -135,38 +144,36 @@ int ltq_grx500_get_temp(struct ltq_thermal *priv)
+ 	v = reg & TS_CODE;
+ 
+ 	/* Disable the temp sensor */
+-	regmap_update_bits(priv->chiptop, CTRL_REG, SOC_MASK|TS_EN_MASK,
+-				SOC_NC|TS_EN_SHUNT);
++	regmap_update_bits(priv->chiptop, CTRL_REG, SOC_MASK | TS_EN_MASK,
++			   SOC_NC | TS_EN_SHUNT);
+ 
+ 	/* Temperature interpolation */
+ 	T = (int)(a0 * 1000000 + (-435356 * (v - v1)) +
+ 		  (-360 * (v - v1) * (v - v2)) + 1);
+ 
+-	return T/1000;  /* returns °mC */
++	return T / 1000;  /* returns °mC */
+ }
+ 
+ /* Temperature sensor specific data */
+-static struct ltq_thermal_tsens_data ltq_grx500_data = {
+-	.soc		= LTQ_SOC_GRX500,
+-	.name		= "TempSensor for GRX500",
++static struct ltq_thermal_sensor_ops ltq_grx500_ops = {
+ 	.init		= ltq_grx500_init,
+ 	.get_temp	= ltq_grx500_get_temp,
+ };
+ 
+ static int ltq_thermal_get_temp(void *data, int *temp)
+ {
+-	struct ltq_thermal *priv = data;
++	struct ltq_thermal_sensor *sensor = data;
+ 
+-	if (!priv)
++	if (!sensor)
+ 		return -EINVAL;
+ 
+-	if (!priv->emul_temp)
+-		*temp = priv->tdata->get_temp(priv);
++	if (!sensor->emul_temp)
++		*temp = sensor->ops->get_temp(sensor);
+ 	else
+-		*temp = priv->emul_temp;
++		*temp = sensor->emul_temp;
+ 
+-	priv->last_temp = priv->temp;
+-	priv->temp = *temp;
++	sensor->last_temp = sensor->temp;
++	sensor->temp = *temp;
+ 
+ 	return 0;
+ }
+@@ -174,22 +181,22 @@ static int ltq_thermal_get_temp(void *data, int *temp)
+ static int ltq_thermal_get_trend(void *data, int trip,
+ 				 enum thermal_trend *trend)
+ {
+-	struct ltq_thermal *priv = data;
++	struct ltq_thermal_sensor *sensor = data;
+ 	int trip_temp, trip_hyst, temp, last_temp;
+ 	const struct thermal_trip *trips;
+ 
+-	if (!priv || !priv->tzd)
++	if (!sensor || !sensor->tzd)
+ 		return -EINVAL;
+ 
+-	trips = of_thermal_get_trip_points(priv->tzd);
++	trips = of_thermal_get_trip_points(sensor->tzd);
+ 	if (!trips)
+ 		return -EINVAL;
+ 
+-	if (!of_thermal_is_trip_valid(priv->tzd, trip))
++	if (!of_thermal_is_trip_valid(sensor->tzd, trip))
+ 		return -EINVAL;
+ 
+-	temp = priv->temp;
+-	last_temp = priv->last_temp;
++	temp = sensor->temp;
++	last_temp = sensor->last_temp;
+ 
+ 	trip_temp = trips[trip].temperature;
+ 	trip_hyst = trips[trip].hysteresis;
+@@ -203,14 +210,15 @@ static int ltq_thermal_get_trend(void *data, int trip,
+ 
+ 	return 0;
+ }
++
+ static int ltq_thermal_set_emul_temp(void *data, int temp)
+ {
+-	struct ltq_thermal *priv = data;
++	struct ltq_thermal_sensor *sensor = data;
+ 
+-	if (!priv || !priv->tzd)
++	if (!sensor || !sensor->tzd)
+ 		return -EINVAL;
+ 
+-	priv->emul_temp = temp;
++	sensor->emul_temp = temp;
+ 
+ 	return 0;
+ }
+@@ -224,16 +232,18 @@ static struct thermal_zone_of_device_ops ops = {
+ static const struct of_device_id ltq_thermal_match[] = {
+ 	{
+ 		.compatible = "lantiq,ts-xrx500",
+-		.data       = &ltq_grx500_data,
++		.data       = &ltq_grx500_ops,
+ 	},
+ 	{ /* sentinel */ },
+ };
+ 
+ static int ltq_thermal_probe(struct platform_device *pdev)
+ {
+-
+ 	struct ltq_thermal *priv;
+ 	struct device_node *node = pdev->dev.of_node;
++	const struct ltq_thermal_sensor_ops *sens_ops =
++		of_device_get_match_data(&pdev->dev);
++	int i;
+ 
+ 	dev_dbg(&pdev->dev, "%s\n", __func__);
+ 
+@@ -241,9 +251,6 @@ static int ltq_thermal_probe(struct platform_device *pdev)
+ 	if (!priv)
+ 		return -ENOMEM;
+ 
+-	priv->tdata = (struct ltq_thermal_tsens_data *)
+-			of_device_get_match_data(&pdev->dev);
+-
+ 	priv->dev = &pdev->dev;
+ 	platform_set_drvdata(pdev, priv);
+ 
+@@ -253,14 +260,38 @@ static int ltq_thermal_probe(struct platform_device *pdev)
+ 		return PTR_ERR(priv->chiptop);
+ 	}
+ 
+-	/* Init sensor */
+-	priv->tdata->init(pdev, priv);
++	if (device_property_read_u32(&pdev->dev, "#thermal-sensor-cells",
++				     &priv->count)) {
++		/* register single cell if #thermal-sensor-cells is missing */
++		priv->count = 0;
++	}
++
++	priv->sensors = devm_kzalloc(&pdev->dev, priv->count *
++				     sizeof(struct ltq_thermal_sensor),
++				     GFP_KERNEL);
++	if (!priv->sensors)
++		return -ENOMEM;
+ 
+-	priv->tzd = devm_thermal_zone_of_sensor_register(&pdev->dev, 0, priv,
+-							 &ops);
+-	if (IS_ERR(priv->tzd)) {
+-		dev_err(&pdev->dev, "Failed to register thermal zone device\n");
+-		return PTR_ERR(priv->tzd);
++	for (i = 0; i < priv->count; i++) {
++		struct ltq_thermal_sensor *sensor = priv->sensors + i;
++
++		sensor->id = i;
++		sensor->drvdata = priv;
++		sensor->ops = sens_ops;
++
++		/* Init sensor */
++		sensor->ops->init(sensor);
++
++		/* Register sensor */
++		sensor->tzd = devm_thermal_zone_of_sensor_register(&pdev->dev,
++								   i,
++								   sensor,
++								   &ops);
++		if (IS_ERR(sensor->tzd)) {
++			dev_err(&pdev->dev,
++				"Failed to register tzd for sensor id %d\n", i);
++			return PTR_ERR(sensor->tzd);
++		}
+ 	}
+ 
+ 	dev_dbg(&pdev->dev, "%s: tzd registered\n", __func__);

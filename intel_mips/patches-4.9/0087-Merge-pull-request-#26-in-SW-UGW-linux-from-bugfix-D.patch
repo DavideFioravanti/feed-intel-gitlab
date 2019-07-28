@@ -1,0 +1,30 @@
+From 83e33e01617c274b2e2b1e8a701c1a2a1f98100b Mon Sep 17 00:00:00 2001
+From: "Wu, Qiming" <qi-ming.wu@intel.com>
+Date: Tue, 26 Jun 2018 10:47:20 +0200
+Subject: [PATCH] Merge pull request #26 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-799-declare-slc-flash-type-in-spi-qspi-nand-flash-driver to
+ master
+
+* commit 'ef7654438ebdcc75cf87acebdfd9ba29f9df73a8':
+  DRVLIB_SW-799 - Force SLC type in ltq_spinand
+---
+ drivers/mtd/ltq-spinand/ltq_spinand.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/mtd/ltq-spinand/ltq_spinand.c b/drivers/mtd/ltq-spinand/ltq_spinand.c
+index a1bc833da319..0a623834ca4f 100644
+--- a/drivers/mtd/ltq-spinand/ltq_spinand.c
++++ b/drivers/mtd/ltq-spinand/ltq_spinand.c
+@@ -322,6 +322,12 @@ struct nand_flash_dev * spinand_flash_detect(struct mtd_info *mtd, struct nand_c
+ 
+ 	chip->chipsize = (type->chipsize) << 20;
+ 
++	/* There are no unified way to determine SLC/MLC from flash. Some use
++	 * ONFI, others do not conform to this. So for now we simply force all
++	 * as SLC.
++	 */
++	chip->bits_per_cell = 1;
++
+ 	/* do we need it ? */
+ 	chip->options |= type->options;
+ 

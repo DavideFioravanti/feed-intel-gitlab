@@ -1,0 +1,65 @@
+#include "falconmx_haps_spi_nand.dts"
+
+/ {
+	model = "FalconMX HAPS SPI NAND PONIP model";
+	compatible = "intel,falconmx_haps_spi_nand_ponip", "intel,falconmx_haps_spi_nand", "intel,falconmx";
+};
+
+&pon_eth {
+	status = "okay";
+};
+
+&qspi0 {
+	status = "disabled";
+};
+
+&pinctrl {
+	/*
+	 * This is used by the PON IP FPGA to access registers
+	 * on the Falcon MX on the HAPS
+	 */
+	pinctrl_aca_spi_slave: aca_spi_slave {
+		intel,pins =  <20>, /* ACA_SPI_CLK */
+			      <21>, /* ACA_SPI_TX */
+			      <22>, /* ACA_SPI_RX */
+			      <23>; /* ACA_SPI_CS */
+		intel,function = "aca_spi_slave";
+		intel,mux = <EQBR_MUX_4>;
+		intel,groups = "aca_spi_slave";
+	};
+};
+
+&wan {
+	status = "disabled";
+};
+
+&ssc1 {
+	ponmbox@0 {
+		compatible = "intel,pon_mbox";
+		reg = <0>;
+		spi-max-frequency = <1000000>;
+		spi-cpha;
+		spi-cpol;
+
+		interrupts = <28 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-parent = <&gpio0>;
+
+		pinctrl-names = "default";
+		/*
+		 * This is used by the PON IP FPGA to access registers
+		 * on the Falcon MX on the HAPS
+		 */
+		pinctrl-0 = <&pinctrl_aca_spi_slave>;
+	};
+};
+
+&i2c0 {
+	eeprom@50 {
+		compatible = "at,24c02";
+		reg = <0x50>;
+	};
+	eeprom@51 {
+		compatible = "at,24c02";
+		reg = <0x51>;
+	};
+};

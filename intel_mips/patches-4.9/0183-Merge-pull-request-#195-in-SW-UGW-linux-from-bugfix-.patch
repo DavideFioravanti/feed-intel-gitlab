@@ -1,0 +1,28 @@
+From 6fbbdda2047734fa408ce28d76ea1c5dfea4f12d Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 19 Sep 2018 11:17:02 +0200
+Subject: [PATCH] Merge pull request #195 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-916-support-dt-mem-reserve to master
+
+* commit '8d3d6a13410e3f61e7b7f30587533302df1ca562':
+  fix MIPS DT reserve memory issue
+---
+ arch/mips/kernel/setup.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/arch/mips/kernel/setup.c b/arch/mips/kernel/setup.c
+index 0882d7e0b9d3..30e1c701205d 100644
+--- a/arch/mips/kernel/setup.c
++++ b/arch/mips/kernel/setup.c
+@@ -528,7 +528,10 @@ static void __init bootmem_init(void)
+ 			continue;
+ #endif
+ 
+-		memblock_add_node(PFN_PHYS(start), PFN_PHYS(end - start), 0);
++		if (boot_mem_map.map[i].type != BOOT_MEM_RESERVED)
++			memblock_add_node(PFN_PHYS(start), PFN_PHYS(end - start), 0);
++		else
++			memblock_reserve(PFN_PHYS(start), PFN_PHYS(end - start));
+ 	}
+ 
+ 	/*

@@ -1,0 +1,26 @@
+From 7e86e83fac30abe6013580528a4670baca1978c0 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 30 Oct 2018 14:19:07 +0100
+Subject: [PATCH] Merge pull request #255 in SW_UGW/linux from
+ bugfix/UGW_SW-31884-ugw-sdl-spdmon-add-cap-sys-pacct-capability to master
+
+* commit '8f26a72fb4533553f2917970ed1c7a5f5d26f6b9':
+  hwmon: spdmon: Add check for CAP_SYS_PACCT when reading sysfs
+---
+ drivers/hwmon/spdmon.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/hwmon/spdmon.c b/drivers/hwmon/spdmon.c
+index 119a931068ea..01134c05a899 100644
+--- a/drivers/hwmon/spdmon.c
++++ b/drivers/hwmon/spdmon.c
+@@ -240,6 +240,9 @@ static int show_value(struct device *dev,
+ 	struct spd_cnt smcl;
+ 	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
+ 
++	if (!capable(CAP_SYS_PACCT))
++		return -EPERM;
++
+ 	if (attr->index == SHOW_NAME)
+ 		return sprintf(buf, "%s\n", SPD_MON_NAME);
+ 	else if (attr->index == SHOW_CLASS_B) {

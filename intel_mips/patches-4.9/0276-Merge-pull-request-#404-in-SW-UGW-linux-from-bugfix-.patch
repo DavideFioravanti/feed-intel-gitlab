@@ -1,0 +1,27 @@
+From 1eec3588d7dccb30fd7fc054a51a2f51bd2df03c Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 18 Jan 2019 08:59:08 +0100
+Subject: [PATCH] Merge pull request #404 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-1060-clone-spi-clock-initial-idle-low-but-should-be-high to
+ master
+
+* commit '3fe09d64fa563771edd75fae7b70747792417aaa':
+  DRVLIB_SW-1060: CLONE - SPI clock initial idle low, but should be high
+---
+ drivers/spi/spi-grx500.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/spi/spi-grx500.c b/drivers/spi/spi-grx500.c
+index d1ebece6cdac..a999b77d09b3 100644
+--- a/drivers/spi/spi-grx500.c
++++ b/drivers/spi/spi-grx500.c
+@@ -593,6 +593,9 @@ static int ltq_spi_setup(struct spi_device *spi)
+ 	if (spi->bits_per_word > 32)
+ 		return -EINVAL;
+ 
++	/* Set the Polarity */
++	ltq_spi_clockmode_set(spi);
++
+ 	/* GPIOs are used for CS */
+ 	if (gpio_is_valid(spi->cs_gpio))
+ 		return 0;

@@ -1,0 +1,25 @@
+From 9a669af7f2416f16b7807e0c3519d3501f41bb9d Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 6 Jul 2018 16:36:45 +0200
+Subject: [PATCH] Merge pull request #44 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-812-fix-pll-not-locked-warning-message to master
+
+* commit 'd5f10de42e4f04eb4b83eb41d8c86bf203e43bee':
+  fix wait pll lock timeout issue.
+---
+ drivers/clk/intel/clk_api.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/clk/intel/clk_api.c b/drivers/clk/intel/clk_api.c
+index 10de6538c91b..4d7b82ac9c7c 100644
+--- a/drivers/clk/intel/clk_api.c
++++ b/drivers/clk/intel/clk_api.c
+@@ -1065,7 +1065,7 @@ pll_clk_set(struct regmap *map, u32 reg,
+ 	    spinlock_t *lock)
+ {
+ 	unsigned int mult, div, frac;
+-	const int loop_cnt = 8;
++	const int loop_cnt = 100;
+ 	int i;
+ 
+ 	mult = ff_tbl->mult;

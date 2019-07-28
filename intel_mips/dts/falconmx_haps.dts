@@ -1,0 +1,7 @@
+/dts-v1/;
+#include "falconmx_haps.dtsi"
+
+/ {
+	model = "FalconMX HAPS generic model";
+	compatible = "intel,falconmx_haps", "intel,falconmx";
+};

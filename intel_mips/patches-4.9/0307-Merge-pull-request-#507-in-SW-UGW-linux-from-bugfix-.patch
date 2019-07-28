@@ -1,0 +1,40 @@
+From 12d3c246cc0b4970dd1543b2068bbf3c563ec391 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 22 Feb 2019 14:01:04 +0100
+Subject: [PATCH] Merge pull request #507 in SW_UGW/linux from
+ bugfix/PONRTSYS-3635-qos_mgr_setup_tc-takes-around-250-milliseconds-for-removal
+ to master
+
+* commit 'fae115d00555fb5f397f025611c42b6a37036ba4':
+  PONRTSYS-3635: wait only 0.1ms to 0.2ms for PPv4 FW answer
+---
+ drivers/net/ethernet/lantiq/ppv4/qos/pp_qos_fw.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/ppv4/qos/pp_qos_fw.c b/drivers/net/ethernet/lantiq/ppv4/qos/pp_qos_fw.c
+index 79e4e1cb704e..bcc02fa91694 100644
+--- a/drivers/net/ethernet/lantiq/ppv4/qos/pp_qos_fw.c
++++ b/drivers/net/ethernet/lantiq/ppv4/qos/pp_qos_fw.c
+@@ -2614,8 +2614,7 @@ static void post_process(struct pp_qos_dev *qdev, union driver_cmd *dcmd)
+ }
+ 
+ #define MAX_FW_CMD_SIZE 120U
+-#define MS_SLEEP_BETWEEN_POLL 10U
+-#define NUM_OF_POLLS	500U
++#define NUM_OF_POLLS	100000U
+ 
+ /*
+  * Go over all commands on pending queue until cmd id
+@@ -2663,7 +2662,11 @@ void check_completion(struct pp_qos_dev *qdev)
+ 		val = qos_u32_from_uc(*pos);
+ 		while ((val &
+ 			(UC_CMD_FLAG_UC_DONE | UC_CMD_FLAG_UC_ERROR)) == 0) {
+-			qos_sleep(MS_SLEEP_BETWEEN_POLL);
++#ifdef __KERNEL__
++			usleep_range(100, 200);
++#else
++			usleep(200);
++#endif
+ 			val = qos_u32_from_uc(*pos);
+ 			++i;
+ 			if (i == NUM_OF_POLLS) {

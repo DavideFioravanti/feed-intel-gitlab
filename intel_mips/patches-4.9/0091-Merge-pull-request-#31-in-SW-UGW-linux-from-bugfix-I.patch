@@ -1,0 +1,25 @@
+From 5531621e59d74876538e4da5ddf75ac381ef3e21 Mon Sep 17 00:00:00 2001
+From: "Wu, Qiming" <qi-ming.wu@intel.com>
+Date: Fri, 29 Jun 2018 10:17:27 +0200
+Subject: [PATCH] Merge pull request #31 in SW_UGW/linux from
+ bugfix/IPSUP-50117_remove_padding_in_CBM_driver to master
+
+* commit '948acf52fe1bf8c62f2a5c8e129678e379f2b862':
+  remove padding in Tx path
+---
+ drivers/net/ethernet/lantiq/cqm/grx500/cbm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c b/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
+index b41fa65a943a..5967a94ff359 100644
+--- a/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
++++ b/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
+@@ -1828,7 +1828,7 @@ cbm_cpu_pkt_tx_grx500(
+ 		skb->head = NULL;
+ 	}
+ 	if (setup_desc((struct cbm_desc *)&desc, tmp_data_ptr,
+-		       (skb->len < (ETH_ZLEN + 8)) ? (ETH_ZLEN + 8) : skb->len,
++		       skb->len,
+ 		       skb->DW1, skb->DW0)){
+ 		pr_err("cbm setup desc failed..\n");
+ 		dev_kfree_skb_any(skb);

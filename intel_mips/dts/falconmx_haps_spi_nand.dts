@@ -1,0 +1,44 @@
+/dts-v1/;
+#include "falconmx_haps.dtsi"
+
+/ {
+	model = "FalconMX HAPS SPI NAND model";
+	compatible = "intel,falconmx_haps_spi_nand", "intel,falconmx";
+};
+
+&ssc0 {
+	ltq-spinand@1 {
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		reg = <1>;
+		compatible = "lantiq,spinand";
+		linux,mtd-name = "nand.0";
+		spi-max-frequency = <2000000>;
+
+		/* Basic fallback partition layout. Real partition should be
+		 * defined in kernel boot parameters by uboot.
+		 */
+		partition@0 {
+			reg = <0x0 0x40000>;
+			label = "uboot";
+			read-only;
+		};
+
+		partition@40000 {
+			reg = <0x40000 0x80000>;
+			label = "uboot_env";
+		};
+
+		partition@C0000 {
+			reg = <0xC0000 0x740000>;
+			label = "image0";
+		};
+
+		partition@800000 {
+			reg = <0x800000 0x800000>;
+			label = "image1";
+		};
+	};
+};
+

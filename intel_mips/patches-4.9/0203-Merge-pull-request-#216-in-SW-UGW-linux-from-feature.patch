@@ -1,0 +1,53 @@
+From 866cc45e74ca8d9e2cc1f3e9ee677cd8faf0d6e0 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 16 Oct 2018 17:24:01 +0200
+Subject: [PATCH] Merge pull request #216 in SW_UGW/linux from
+ feature/DRVLIB_SW-955-change-falcon_mountain-system-timer-from-gptc-to-gic-timer
+ to master
+
+* commit 'a638bd7876d5d9e5c3c3dcf9fe23e7c0c1c2ec2f':
+  DRVLIB_SW-955 - system timer default from GPTC to GIC timer
+---
+ arch/mips/lantiq/Kconfig             | 1 -
+ drivers/clocksource/Kconfig          | 2 +-
+ drivers/clocksource/mips-gic-timer.c | 2 +-
+ 3 files changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/arch/mips/lantiq/Kconfig b/arch/mips/lantiq/Kconfig
+index aa24ce56c4fb..fb497aef146e 100755
+--- a/arch/mips/lantiq/Kconfig
++++ b/arch/mips/lantiq/Kconfig
+@@ -41,7 +41,6 @@ config SOC_GRX500
+ 	bool "GRX500"
+ 	select GENERIC_ISA_DMA
+ 	select MIPS_GIC
+-	select INTEL_GPTC
+ 	select MIPS_CPU_SCACHE
+ 	select SYS_HAS_CPU_MIPS32_R3_5
+ 	select CPU_MIPSR2_IRQ_VI
+diff --git a/drivers/clocksource/Kconfig b/drivers/clocksource/Kconfig
+index 153a53efcf7d..12349afd22d7 100755
+--- a/drivers/clocksource/Kconfig
++++ b/drivers/clocksource/Kconfig
+@@ -486,7 +486,7 @@ config CLKSRC_VERSATILE
+ 	  platforms.
+ 
+ config CLKSRC_MIPS_GIC
+-	bool
++	bool "MIPS GIC clock source"
+ 	depends on MIPS_GIC
+ 	select CLKSRC_OF
+ 
+diff --git a/drivers/clocksource/mips-gic-timer.c b/drivers/clocksource/mips-gic-timer.c
+index 53249a254ad9..b1c15bfa4e1d 100755
+--- a/drivers/clocksource/mips-gic-timer.c
++++ b/drivers/clocksource/mips-gic-timer.c
+@@ -62,7 +62,7 @@ static void gic_clockevent_cpu_init(unsigned int cpu,
+ 	cd->cpumask		= cpumask_of(cpu);
+ 	cd->set_next_event	= gic_next_event;
+ 
+-	clockevents_config_and_register(cd, gic_frequency, 0x300, 0x7fffffff);
++	clockevents_config_and_register(cd, gic_frequency, 0x3000, 0x7fffffff);
+ 
+ 	enable_percpu_irq(gic_timer_irq, IRQ_TYPE_NONE);
+ }

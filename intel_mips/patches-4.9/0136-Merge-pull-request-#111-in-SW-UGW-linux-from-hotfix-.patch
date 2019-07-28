@@ -1,0 +1,28 @@
+From 50d1fffac5396dbaf5fe8b553ce7f4d20d6dc697 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 3 Aug 2018 11:45:39 +0200
+Subject: [PATCH] Merge pull request #111 in SW_UGW/linux from
+ hotfix/UGW_SW-29102-reverting-kconfig-for-eip123 to master
+
+* commit 'ddc7037f02f41f110766929c6606b771bda584ae':
+  UGW:29102 adding Kconfig for eip123
+---
+ drivers/crypto/Kconfig | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/crypto/Kconfig b/drivers/crypto/Kconfig
+index 4d2b81f2b223..93df829868da 100644
+--- a/drivers/crypto/Kconfig
++++ b/drivers/crypto/Kconfig
+@@ -555,4 +555,11 @@ config CRYPTO_DEV_ROCKCHIP
+ 
+ source "drivers/crypto/chelsio/Kconfig"
+ 
++config CRYPTO_DEV_LANTIQ_EIP123
++   tristate "Support Lantiq EIP123 hardware crypto engine"
++   depends on LANTIQ && SOC_TYPE_GRX500_TEP
++   default n
++   help
++      Selects Hardware accelerated EIP123 crypto drivers.
++
+ endif # CRYPTO_HW

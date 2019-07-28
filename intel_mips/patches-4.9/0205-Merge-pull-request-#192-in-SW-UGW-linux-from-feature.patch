@@ -1,0 +1,81 @@
+From 876e17f9fd5e0b446b5815fbbb4b6e3f376fbd23 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 22 Oct 2018 11:22:10 +0200
+Subject: [PATCH] Merge pull request #192 in SW_UGW/linux from
+ feature/DRVLIB_SW-920-falcon-mountain-gphy-xgmac-restart to master
+
+* commit 'c614de360cf27fa63f83f8e5e20a689dddbd4e70':
+  Add xgmac restart in eth driver for gphy
+  Mac Api's to do a soft restart
+---
+ drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c     | 6 ++++++
+ drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c | 8 ++++++++
+ include/net/switch_api/mac_ops.h                     | 5 +++++
+ 3 files changed, 19 insertions(+)
+
+diff --git a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+index e86c6e503294..c03b179e8c51 100644
+--- a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
++++ b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+@@ -1548,6 +1548,7 @@ static int prx300_phy_connect(struct net_device *dev, struct xrx500_port *port)
+ {
+ 	struct phy_device *phydev = NULL;
+ 	struct ltq_eth_priv *priv = NULL;
++	struct mac_ops *ops;
+ 
+ 	priv = netdev_priv(dev);
+ 
+@@ -1570,6 +1571,11 @@ static int prx300_phy_connect(struct net_device *dev, struct xrx500_port *port)
+ 	phydev->advertising = phydev->supported;
+ 	port->phydev = phydev;
+ 
++	/* restart xgmac */
++	ops = gsw_get_mac_ops(0, priv->xgmac_id);
++	if (ops && ops->soft_restart)
++		ops->soft_restart(ops);
++
+ 	pr_info("%s: attached PHY [%s] (phy_addr=%s, irq=%d)\n",
+ 		dev->name, phydev->drv->name,
+ 		phydev_name(phydev), phydev->irq);
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
+index 4caba3325e53..4e1ee6ad5d78 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
+@@ -1325,6 +1325,13 @@ int mac_irq_clr(void *pdev, u32 event)
+ 	return 0;
+ }
+ 
++static void mac_soft_restart(void *pdev)
++{
++	/* Bring Down and up Xgmac Tx and Rx, Not all register reset */
++	xgmac_powerdown(pdev);
++	xgmac_powerup(pdev);
++}
++
+ void mac_init_fn_ptrs(struct mac_ops *mac_op)
+ {
+ 	mac_op->set_flow_ctl = mac_set_flowctrl;
+@@ -1387,6 +1394,7 @@ void mac_init_fn_ptrs(struct mac_ops *mac_op)
+ 	mac_op->do_tx_hwts = xgmac_tx_hwts;
+ 	mac_op->mac_get_ts_info = xgmac_get_ts_info;
+ #endif
++	mac_op->soft_restart = mac_soft_restart;
+ 
+ 	mac_op->set_macaddr = mac_set_macaddr;
+ 	mac_op->set_rx_crccheck = mac_set_rxcrccheck;
+diff --git a/include/net/switch_api/mac_ops.h b/include/net/switch_api/mac_ops.h
+index cb8bdec65092..30450a35b658 100644
+--- a/include/net/switch_api/mac_ops.h
++++ b/include/net/switch_api/mac_ops.h
+@@ -402,6 +402,11 @@ struct mac_ops {
+ 	 * return	OUT	-1: 	Initialize MAC Error
+ 	 */
+ 	int(*mac_get_ts_info)(void *, struct ethtool_ts_info *);
++	/* This sequence is to do soft restart of Xgmac
++	 * param[in/out]IN:	ops	MAC ops Struct registered for MAC 0/1/2.
++	 * return	OUT	-1:	Initialize MAC Error
++	 */
++	void(*soft_restart)(void *);
+ #endif
+ 	/* This sequence is used Initialize MAC
+ 	 * param[in/out]IN:	ops	MAC ops Struct registered for MAC 0/1/2.

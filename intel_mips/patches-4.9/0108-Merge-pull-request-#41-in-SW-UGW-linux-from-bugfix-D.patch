@@ -1,0 +1,28 @@
+From d6fefa743e2dffb581aa4e81316d247e0c7f2f21 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 9 Jul 2018 07:09:35 +0200
+Subject: [PATCH] Merge pull request #41 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-734-falcon-mountain-datapath-ctp_dev-not-unset-in-reset-function
+ to master
+
+* commit '87c4152204fd5a90d0f04a109f926f475ea47374':
+  DRVLIB_SW-734 dp fix for ctp_dev unset
+---
+ drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+index 81ecb210ed69..1d325c32129a 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+@@ -1155,9 +1155,9 @@ static int subif_hw_reset(int inst, int portid, int subif_ix,
+ 	dp_q_tbl[inst][qid].ref_cnt--;
+ 	dp_deq_port_tbl[inst][cqm_deq_port].ref_cnt--;
+ 	if (port_info->subif_info[subif_ix].ctp_dev) { /* pmapper */
++		port_info->subif_info[subif_ix].ctp_dev = NULL;
+ 		dp_bp_dev_tbl[inst][bp].ref_cnt--;
+ 		if (!dp_bp_dev_tbl[inst][bp].ref_cnt) {
+-			port_info->subif_info[subif_ix].ctp_dev = NULL;
+ 			dp_bp_dev_tbl[inst][bp].dev = NULL;
+ 			dp_bp_dev_tbl[inst][bp].flag = 0;
+ 			DP_DEBUG(DP_DBG_FLAG_REG,

@@ -1,0 +1,361 @@
+From 0973d1ddf9e6ad672ae90bb53f4cc6108239aef4 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Thu, 23 Aug 2018 11:58:09 +0200
+Subject: [PATCH] Merge pull request #139 in SW_UGW/linux from
+ feature/PONRTSYS-1762-qos-manager-basic-mqprio-offload to master
+
+* commit '86e407bd667ec358b2acb18c5a654b8328be8d9b':
+  New QoS Mgr extended hook is added. The new extended hook is required if TC operation has to be done on the netdevice which are not registered to DP. This is extended to take dequeue index and port_id.
+  mqprio: Modify mqprio to pass user parameters via ndo_setup_tc.
+  mqprio: Change handling of hw u8 to allow for multiple hardware offload modes
+---
+ drivers/net/ethernet/amd/xgbe/xgbe-drv.c          |  3 +-
+ drivers/net/ethernet/broadcom/bnx2x/bnx2x_cmn.c   |  5 ++-
+ drivers/net/ethernet/broadcom/bnxt/bnxt.c         |  4 ++-
+ drivers/net/ethernet/intel/fm10k/fm10k_netdev.c   |  4 ++-
+ drivers/net/ethernet/intel/i40e/i40e_main.c       |  7 ++--
+ drivers/net/ethernet/intel/ixgbe/ixgbe_main.c     |  4 ++-
+ drivers/net/ethernet/lantiq/ppa/ppa_hook.c        |  3 ++
+ drivers/net/ethernet/mellanox/mlx4/en_netdev.c    |  4 ++-
+ drivers/net/ethernet/mellanox/mlx5/core/en_main.c |  4 ++-
+ drivers/net/ethernet/sfc/tx.c                     |  4 ++-
+ drivers/net/ethernet/ti/netcp_core.c              | 12 ++++---
+ include/linux/netdevice.h                         |  2 +-
+ include/net/ppa/qos_mgr_tc_hook.h                 |  1 +
+ include/uapi/linux/pkt_sched.h                    |  8 +++++
+ net/sched/sch_mqprio.c                            | 39 +++++++++++++++--------
+ 15 files changed, 75 insertions(+), 29 deletions(-)
+
+diff --git a/drivers/net/ethernet/amd/xgbe/xgbe-drv.c b/drivers/net/ethernet/amd/xgbe/xgbe-drv.c
+index 1e4e8b245cd5..568b043f6d11 100644
+--- a/drivers/net/ethernet/amd/xgbe/xgbe-drv.c
++++ b/drivers/net/ethernet/amd/xgbe/xgbe-drv.c
+@@ -1637,7 +1637,8 @@ static int xgbe_setup_tc(struct net_device *netdev, u32 handle, __be16 proto,
+ 	if (tc_to_netdev->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	tc = tc_to_netdev->tc;
++	tc_to_netdev->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++	tc = tc_to_netdev->mqprio->num_tc;
+ 
+ 	if (tc > pdata->hw_feat.tc_cnt)
+ 		return -EINVAL;
+diff --git a/drivers/net/ethernet/broadcom/bnx2x/bnx2x_cmn.c b/drivers/net/ethernet/broadcom/bnx2x/bnx2x_cmn.c
+index 31287cec6e3a..c41bfc24c064 100644
+--- a/drivers/net/ethernet/broadcom/bnx2x/bnx2x_cmn.c
++++ b/drivers/net/ethernet/broadcom/bnx2x/bnx2x_cmn.c
+@@ -4293,7 +4293,10 @@ int __bnx2x_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ {
+ 	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+-	return bnx2x_setup_tc(dev, tc->tc);
++
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	return bnx2x_setup_tc(dev, tc->mqprio->num_tc);
+ }
+ 
+ /* called with rtnl_lock */
+diff --git a/drivers/net/ethernet/broadcom/bnxt/bnxt.c b/drivers/net/ethernet/broadcom/bnxt/bnxt.c
+index ca57eb56c717..338b49ab84f9 100644
+--- a/drivers/net/ethernet/broadcom/bnxt/bnxt.c
++++ b/drivers/net/ethernet/broadcom/bnxt/bnxt.c
+@@ -6423,7 +6423,9 @@ static int bnxt_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ 	if (ntc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	tc = ntc->tc;
++	ntc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	tc = ntc->mqprio->num_tc;
+ 
+ 	if (tc > bp->max_tc) {
+ 		netdev_err(dev, "too many traffic classes requested: %d Max supported is %d\n",
+diff --git a/drivers/net/ethernet/intel/fm10k/fm10k_netdev.c b/drivers/net/ethernet/intel/fm10k/fm10k_netdev.c
+index ea5ea653e1db..812b1192b3fc 100644
+--- a/drivers/net/ethernet/intel/fm10k/fm10k_netdev.c
++++ b/drivers/net/ethernet/intel/fm10k/fm10k_netdev.c
+@@ -1248,7 +1248,9 @@ static int __fm10k_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ 	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	return fm10k_setup_tc(dev, tc->tc);
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	return fm10k_setup_tc(dev, tc->mqprio->num_tc);
+ }
+ 
+ static void fm10k_assign_l2_accel(struct fm10k_intfc *interface,
+diff --git a/drivers/net/ethernet/intel/i40e/i40e_main.c b/drivers/net/ethernet/intel/i40e/i40e_main.c
+index 57c7456a5751..2d013a99b9f2 100644
+--- a/drivers/net/ethernet/intel/i40e/i40e_main.c
++++ b/drivers/net/ethernet/intel/i40e/i40e_main.c
+@@ -5373,9 +5373,12 @@ static int __i40e_setup_tc(struct net_device *netdev, u32 handle, __be16 proto,
+ 			   struct tc_to_netdev *tc)
+ #endif
+ {
+-	if (handle != TC_H_ROOT || tc->type != TC_SETUP_MQPRIO)
++	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+-	return i40e_setup_tc(netdev, tc->tc);
++
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	return i40e_setup_tc(netdev, tc->mqprio->num_tc);
+ }
+ 
+ /**
+diff --git a/drivers/net/ethernet/intel/ixgbe/ixgbe_main.c b/drivers/net/ethernet/intel/ixgbe/ixgbe_main.c
+index a5428b6abdac..e56bf2460b6a 100644
+--- a/drivers/net/ethernet/intel/ixgbe/ixgbe_main.c
++++ b/drivers/net/ethernet/intel/ixgbe/ixgbe_main.c
+@@ -8701,7 +8701,9 @@ static int __ixgbe_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ 	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	return ixgbe_setup_tc(dev, tc->tc);
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	return ixgbe_setup_tc(dev, tc->mqprio->num_tc);
+ }
+ 
+ #ifdef CONFIG_PCI_IOV
+diff --git a/drivers/net/ethernet/lantiq/ppa/ppa_hook.c b/drivers/net/ethernet/lantiq/ppa/ppa_hook.c
+index 1cabd20225ae..0e563e418238 100644
+--- a/drivers/net/ethernet/lantiq/ppa/ppa_hook.c
++++ b/drivers/net/ethernet/lantiq/ppa/ppa_hook.c
+@@ -417,6 +417,9 @@ int32_t (*ppa_hook_reset_qos_wfq)(uint32_t portid, uint32_t queueid, uint32_t fl
+ int32_t (*qos_mgr_hook_setup_tc)(struct net_device *dev, u32 handle, __be16 protocol, struct tc_to_netdev *tc) = NULL;
+ EXPORT_SYMBOL(qos_mgr_hook_setup_tc);
+ 
++int32_t (*qos_mgr_hook_setup_tc_ext)(struct net_device *dev, u32 handle, __be16 protocol, struct tc_to_netdev *tc, int32_t deq_idx, int32_t port_id) = NULL;
++EXPORT_SYMBOL(qos_mgr_hook_setup_tc_ext);
++
+ #ifdef CONFIG_INTEL_IPQOS_MARK_SKBPRIO
+ /*
+  * Function to mark priority based on specific criteria
+diff --git a/drivers/net/ethernet/mellanox/mlx4/en_netdev.c b/drivers/net/ethernet/mellanox/mlx4/en_netdev.c
+index 0160c93de6d3..72dd9c49afd8 100644
+--- a/drivers/net/ethernet/mellanox/mlx4/en_netdev.c
++++ b/drivers/net/ethernet/mellanox/mlx4/en_netdev.c
+@@ -89,7 +89,9 @@ static int __mlx4_en_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ 	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	return mlx4_en_setup_tc(dev, tc->tc);
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	return mlx4_en_setup_tc(dev, tc->mqprio->num_tc);
+ }
+ 
+ #ifdef CONFIG_RFS_ACCEL
+diff --git a/drivers/net/ethernet/mellanox/mlx5/core/en_main.c b/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
+index 2d235e8433be..028a40b966bd 100644
+--- a/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
++++ b/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
+@@ -2644,7 +2644,9 @@ static int mlx5e_ndo_setup_tc(struct net_device *dev, u32 handle,
+ 	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	return mlx5e_setup_tc(dev, tc->tc);
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
++	return mlx5e_setup_tc(dev, tc->mqprio->num_tc);
+ }
+ 
+ struct rtnl_link_stats64 *
+diff --git a/drivers/net/ethernet/sfc/tx.c b/drivers/net/ethernet/sfc/tx.c
+index 6f26acd0aa61..bbf9b484bb5b 100644
+--- a/drivers/net/ethernet/sfc/tx.c
++++ b/drivers/net/ethernet/sfc/tx.c
+@@ -573,11 +573,13 @@ int efx_setup_tc(struct net_device *net_dev, u32 handle, __be16 proto,
+ 	if (ntc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
+-	num_tc = ntc->tc;
++	num_tc = ntc->mqprio->num_tc;
+ 
+ 	if (efx_nic_rev(efx) < EFX_REV_FALCON_B0 || num_tc > EFX_MAX_TX_TC)
+ 		return -EINVAL;
+ 
++	ntc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++
+ 	if (num_tc == net_dev->num_tc)
+ 		return 0;
+ 
+diff --git a/drivers/net/ethernet/ti/netcp_core.c b/drivers/net/ethernet/ti/netcp_core.c
+index 32516661f180..c498616b1cb0 100644
+--- a/drivers/net/ethernet/ti/netcp_core.c
++++ b/drivers/net/ethernet/ti/netcp_core.c
+@@ -1855,6 +1855,7 @@ static u16 netcp_select_queue(struct net_device *dev, struct sk_buff *skb,
+ static int netcp_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ 			  struct tc_to_netdev *tc)
+ {
++	u8 num_tc;
+ 	int i;
+ 
+ 	/* setup tc must be called under rtnl lock */
+@@ -1863,15 +1864,18 @@ static int netcp_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+ 	if (tc->type != TC_SETUP_MQPRIO)
+ 		return -EINVAL;
+ 
++	tc->mqprio->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
++	num_tc = tc->mqprio->num_tc;
++
+ 	/* Sanity-check the number of traffic classes requested */
+ 	if ((dev->real_num_tx_queues <= 1) ||
+-	    (dev->real_num_tx_queues < tc->tc))
++	    (dev->real_num_tx_queues < num_tc))
+ 		return -EINVAL;
+ 
+ 	/* Configure traffic class to queue mappings */
+-	if (tc->tc) {
+-		netdev_set_num_tc(dev, tc->tc);
+-		for (i = 0; i < tc->tc; i++)
++	if (num_tc) {
++		netdev_set_num_tc(dev, num_tc);
++		for (i = 0; i < num_tc; i++)
+ 			netdev_set_tc_queue(dev, i, 1, i);
+ 	} else {
+ 		netdev_reset_tc(dev);
+diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
+index 47c7f5b8f675..941d90ed8bb2 100644
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -797,11 +797,11 @@ struct tc_cls_u32_offload;
+ struct tc_to_netdev {
+ 	unsigned int type;
+ 	union {
+-		u8 tc;
+ 		struct tc_cls_u32_offload *cls_u32;
+ 		struct tc_cls_flower_offload *cls_flower;
+ 		struct tc_cls_matchall_offload *cls_mall;
+ 		struct tc_cls_bpf_offload *cls_bpf;
++		struct tc_mqprio_qopt *mqprio;
+ 	};
+ };
+ 
+diff --git a/include/net/ppa/qos_mgr_tc_hook.h b/include/net/ppa/qos_mgr_tc_hook.h
+index d748bbc1e077..98c07c083469 100644
+--- a/include/net/ppa/qos_mgr_tc_hook.h
++++ b/include/net/ppa/qos_mgr_tc_hook.h
+@@ -25,6 +25,7 @@
+  */
+ #ifdef __KERNEL__
+ extern int32_t (*qos_mgr_hook_setup_tc)(struct net_device *dev, u32 handle, __be16 protocol, struct tc_to_netdev *tc);
++extern int32_t (*qos_mgr_hook_setup_tc_ext)(struct net_device *dev, u32 handle, __be16 protocol, struct tc_to_netdev *tc, int32_t deq_idx, int32_t port_id);
+ #endif /*end of __KERNEL__*/
+ /* @} */
+ #endif  /*  __QOS_MGR_TC_HOOK_H */
+diff --git a/include/uapi/linux/pkt_sched.h b/include/uapi/linux/pkt_sched.h
+index df7451d35131..099bf5528fed 100644
+--- a/include/uapi/linux/pkt_sched.h
++++ b/include/uapi/linux/pkt_sched.h
+@@ -617,6 +617,14 @@ struct tc_drr_stats {
+ #define TC_QOPT_BITMASK 15
+ #define TC_QOPT_MAX_QUEUE 16
+ 
++enum {
++	TC_MQPRIO_HW_OFFLOAD_NONE,	/* no offload requested */
++	TC_MQPRIO_HW_OFFLOAD_TCS,	/* offload TCs, no queue counts */
++	__TC_MQPRIO_HW_OFFLOAD_MAX
++};
++
++#define TC_MQPRIO_HW_OFFLOAD_MAX (__TC_MQPRIO_HW_OFFLOAD_MAX - 1)
++
+ struct tc_mqprio_qopt {
+ 	__u8	num_tc;
+ 	__u8	prio_tc_map[TC_QOPT_BITMASK + 1];
+diff --git a/net/sched/sch_mqprio.c b/net/sched/sch_mqprio.c
+index 922683418e53..1f66133c33d9 100644
+--- a/net/sched/sch_mqprio.c
++++ b/net/sched/sch_mqprio.c
+@@ -21,14 +21,13 @@
+ 
+ struct mqprio_sched {
+ 	struct Qdisc		**qdiscs;
+-	int hw_owned;
++	int hw_offload;
+ };
+ 
+ static void mqprio_destroy(struct Qdisc *sch)
+ {
+ 	struct net_device *dev = qdisc_dev(sch);
+ 	struct mqprio_sched *priv = qdisc_priv(sch);
+-	struct tc_to_netdev tc = {.type = TC_SETUP_MQPRIO};
+ 	unsigned int ntx;
+ 
+ 	if (priv->qdiscs) {
+@@ -39,10 +38,15 @@ static void mqprio_destroy(struct Qdisc *sch)
+ 		kfree(priv->qdiscs);
+ 	}
+ 
+-	if (priv->hw_owned && dev->netdev_ops->ndo_setup_tc)
++	if (priv->hw_offload && dev->netdev_ops->ndo_setup_tc) {
++		struct tc_mqprio_qopt offload = { 0 };
++		struct tc_to_netdev tc = { .type = TC_SETUP_MQPRIO,
++					   { .mqprio = &offload } };
++
+ 		dev->netdev_ops->ndo_setup_tc(dev, sch->handle, 0, &tc);
+-	else
++	} else {
+ 		netdev_set_num_tc(dev, 0);
++	}
+ }
+ 
+ static int mqprio_parse_opt(struct net_device *dev, struct tc_mqprio_qopt *qopt)
+@@ -59,15 +63,20 @@ static int mqprio_parse_opt(struct net_device *dev, struct tc_mqprio_qopt *qopt)
+ 			return -EINVAL;
+ 	}
+ 
+-	/* net_device does not support requested operation */
+-	if (qopt->hw && !dev->netdev_ops->ndo_setup_tc)
+-		return -EINVAL;
++	/* Limit qopt->hw to maximum supported offload value.  Drivers have
++	 * the option of overriding this later if they don't support the a
++	 * given offload type.
++	 */
++	if (qopt->hw > TC_MQPRIO_HW_OFFLOAD_MAX)
++		qopt->hw = TC_MQPRIO_HW_OFFLOAD_MAX;
+ 
+-	/* if hw owned qcount and qoffset are taken from LLD so
+-	 * no reason to verify them here
++	/* If hardware offload is requested we will leave it to the device
++	 * to either populate the queue counts itself or to validate the
++	 * provided queue counts.  If ndo_setup_tc is not present then
++	 * hardware doesn't support offload and we should return an error.
+ 	 */
+ 	if (qopt->hw)
+-		return 0;
++		return dev->netdev_ops->ndo_setup_tc ? 0 : -EINVAL;
+ 
+ 	for (i = 0; i < qopt->num_tc; i++) {
+ 		unsigned int last = qopt->offset[i] + qopt->count[i];
+@@ -139,13 +148,15 @@ static int mqprio_init(struct Qdisc *sch, struct nlattr *opt)
+ 	 * supplied and verified mapping
+ 	 */
+ 	if (qopt->hw) {
+-		struct tc_to_netdev tc = {.type = TC_SETUP_MQPRIO,
+-					  { .tc = qopt->num_tc }};
++		struct tc_mqprio_qopt offload = *qopt;
++		struct tc_to_netdev tc = { .type = TC_SETUP_MQPRIO,
++					   { .mqprio = &offload } };
+ 
+-		priv->hw_owned = 1;
+ 		err = dev->netdev_ops->ndo_setup_tc(dev, sch->handle, 0, &tc);
+ 		if (err)
+ 			return err;
++
++		priv->hw_offload = offload.hw;
+ 	} else {
+ 		netdev_set_num_tc(dev, qopt->num_tc);
+ 		for (i = 0; i < qopt->num_tc; i++)
+@@ -243,7 +254,7 @@ static int mqprio_dump(struct Qdisc *sch, struct sk_buff *skb)
+ 
+ 	opt.num_tc = netdev_get_num_tc(dev);
+ 	memcpy(opt.prio_tc_map, dev->prio_tc_map, sizeof(opt.prio_tc_map));
+-	opt.hw = priv->hw_owned;
++	opt.hw = priv->hw_offload;
+ 
+ 	for (i = 0; i < netdev_get_num_tc(dev); i++) {
+ 		opt.count[i] = dev->tc_to_txq[i].count;

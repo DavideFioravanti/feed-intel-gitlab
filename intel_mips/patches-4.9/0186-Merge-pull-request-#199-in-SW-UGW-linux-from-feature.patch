@@ -1,0 +1,108 @@
+From d38983e214caab64a32a068174a75da4a8599527 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 25 Sep 2018 05:23:50 +0200
+Subject: [PATCH] Merge pull request #199 in SW_UGW/linux from
+ feature/DRVLIB_SW-930-failing-dft-rcm-values-always-reads-back-0 to master
+
+* commit 'abd35772e6902659a17594504425d6dabbf793b3':
+  DRVLIB_SW-930 - Change GPHY_CDB_PDI write to non-mask write
+  DRVLIB_SW-930 - Update gphy pin strapping register
+---
+ drivers/net/ethernet/lantiq/xrx500_phy_fw.c | 40 ++++++++++++-----------------
+ 1 file changed, 16 insertions(+), 24 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/xrx500_phy_fw.c b/drivers/net/ethernet/lantiq/xrx500_phy_fw.c
+index 6ef08b0a2047..755cc8d9700d 100644
+--- a/drivers/net/ethernet/lantiq/xrx500_phy_fw.c
++++ b/drivers/net/ethernet/lantiq/xrx500_phy_fw.c
+@@ -78,13 +78,12 @@ static u32 xrx500_gphy[] = {
+ #define PRX300_GPHY_FCR 0x800
+ #define PRX300_GPHY0_GPS0 0x804
+ #define PRX300_GPHY0_GPS1 0x808
+-#define PRX300_GPHY0_GPS0_LO 0x3f004000
+-#define PRX300_GPHY0_GPS0_HI 0
+ /* GPHY CDB */
+ #define PRX300_GPHY_CDB_PDI_PLL_CFG0 0x0
+ #define PRX300_GPHY_CDB_PDI_PLL_CFG2 0x8
+ #define PRX300_GPHY_CDB_PDI_PLL_MISC 0xc
+ #define PRX300_PLL_FBDIV 0x145
++#define PRX300_PLL_LOCK_RST 0xb
+ #define PRX300_PLL_REFDIV 0x4
+ #define PRX300_GPHY_FORCE_LATCH 1
+ #define PRX300_GPHY_CLEAR_STICKY 1
+@@ -93,23 +92,11 @@ static u32 xrx500_gphy[] = {
+ #define PRX300_LAN_MUX_MASK 0x2
+ #define PRX300_LAN_MUX_GPHY 0x0
+ 
+-static u32 gsw_reg_r32(void __iomem *base, u32 reg_off)
+-{
+-	return __raw_readl(base + reg_off);
+-}
+-
+ static void gsw_reg_w32(void __iomem *base, u32 val, u32 reg_off)
+ {
+ 	__raw_writel(val, base + reg_off);
+ }
+ 
+-static void gsw_reg_w32_mask(void __iomem *base, u32 clear, u32 val,
+-			     u32 reg_off)
+-{
+-	gsw_reg_w32(base, val | (gsw_reg_r32(base, reg_off) & (~clear)),
+-		    reg_off);
+-}
+-
+ /* xrx500 specific boot sequence */
+ static int xrx500_gphy_boot(struct xway_gphy_data *priv)
+ {
+@@ -156,6 +143,7 @@ static int xrx500_dt_parse(struct xway_gphy_data *priv)
+ static int prx300_gphy_boot(struct xway_gphy_data *priv)
+ {
+ 	struct prx300_reset_control *rst = &priv->rst.prx300;
++	u32 pin_strap_lo, pin_strap_hi;
+ 
+ 	/* set LAN interface to GPHY */
+ 	regmap_update_bits(priv->syscfg, PRX300_IFMUX_CFG, PRX300_LAN_MUX_MASK,
+@@ -173,13 +161,19 @@ static int prx300_gphy_boot(struct xway_gphy_data *priv)
+ 	/* release CDB reset */
+ 	reset_control_deassert(rst->gphy_cdb);
+ 
+-	/* GPHY FW address and pin strapping */
++	/* GPHY FW address */
+ 	regmap_update_bits(priv->cgu_syscfg, PRX300_GPHY_FCR, ~0,
+ 			   priv->dma_addr);
++
++	pin_strap_lo = 0x4000; /* base freq deviation */
++	pin_strap_lo |= 0x1f << 24; /* MDIO address */
++	pin_strap_lo |= 0x1 << 29; /* interrupt polarity */
++	pin_strap_hi = 0x8; /* RCAL */
++	pin_strap_hi |= 0x10 << 4; /* RC count */
+ 	regmap_update_bits(priv->cgu_syscfg, PRX300_GPHY0_GPS0, ~0,
+-			   PRX300_GPHY0_GPS0_LO);
++			   pin_strap_lo);
+ 	regmap_update_bits(priv->cgu_syscfg, PRX300_GPHY0_GPS1, ~0,
+-			   PRX300_GPHY0_GPS0_HI);
++			   pin_strap_hi);
+ 
+ 	/* release GPHY reset */
+ 	reset_control_deassert(rst->gphy);
+@@ -189,15 +183,13 @@ static int prx300_gphy_boot(struct xway_gphy_data *priv)
+ 	reset_control_deassert(rst->gphy_pwr_down);
+ 
+ 	/* Set divider and misc config */
+-	gsw_reg_w32_mask(priv->base, 0xFFF0, (PRX300_PLL_FBDIV << 4),
+-			 PRX300_GPHY_CDB_PDI_PLL_CFG0);
++	gsw_reg_w32(priv->base, (PRX300_PLL_FBDIV << 4) | PRX300_PLL_LOCK_RST,
++		    PRX300_GPHY_CDB_PDI_PLL_CFG0);
+ 	gsw_reg_w32(priv->base, (PRX300_PLL_REFDIV << 8),
+ 		    PRX300_GPHY_CDB_PDI_PLL_CFG2);
+-	gsw_reg_w32_mask(priv->base, (PRX300_GPHY_FORCE_LATCH << 13) |
+-			 (PRX300_GPHY_CLEAR_STICKY << 14),
+-			 (PRX300_GPHY_FORCE_LATCH << 13) |
+-			 (PRX300_GPHY_CLEAR_STICKY << 14),
+-			 PRX300_GPHY_CDB_PDI_PLL_MISC);
++	gsw_reg_w32(priv->base, (PRX300_GPHY_FORCE_LATCH << 13) |
++		    (PRX300_GPHY_CLEAR_STICKY << 14),
++		    PRX300_GPHY_CDB_PDI_PLL_MISC);
+ 
+ 	/* delay to wait until firmware boots up */
+ 	msleep(100);

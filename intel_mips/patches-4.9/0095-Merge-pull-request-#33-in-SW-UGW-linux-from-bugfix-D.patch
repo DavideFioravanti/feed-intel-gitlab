@@ -1,0 +1,26 @@
+From 10232c4ab871995395698d971d43fbf6c49962ae Mon Sep 17 00:00:00 2001
+From: "Wu, Qiming" <qi-ming.wu@intel.com>
+Date: Thu, 5 Jul 2018 04:44:18 +0200
+Subject: [PATCH] Merge pull request #33 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-801-fix-ltq-sysrst-compat-string to master
+
+* commit '965f4d196d02ff7f64690400618cea772128b611':
+  DRVLIB_SW-801 - Fix bug in ltq_system_reset compatible string
+---
+ drivers/char/ltq_reset/ltq_system_reset.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/char/ltq_reset/ltq_system_reset.c b/drivers/char/ltq_reset/ltq_system_reset.c
+index 07e6ee675cab..fd0065d5d0d3 100644
+--- a/drivers/char/ltq_reset/ltq_system_reset.c
++++ b/drivers/char/ltq_reset/ltq_system_reset.c
+@@ -2466,7 +2466,8 @@ static int sysrst_remove(struct platform_device *pdev)
+ }
+ 
+ static const struct of_device_id sysrst_match[] = {
+-	{ .compatible = "intel,sysrst-xrx500", "intel,sysrst-falconmx" },
++	{ .compatible = "intel,sysrst-xrx500" },
++	{ .compatible = "intel,sysrst-falconmx" },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, sysrst_match);

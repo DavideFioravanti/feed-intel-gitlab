@@ -1,0 +1,25 @@
+From cd2f2e0e5cb7437e99e25d417d035ae441a50f73 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 24 Dec 2018 11:06:10 +0100
+Subject: [PATCH] Merge pull request #355 in SW_UGW/linux from
+ bugfix/UGW_SW-34314-8.x to master
+
+* commit 'e86caaa8fe4900a0a87665b9ecad5b77320f08f6':
+  Revert temporary fix for getting  DP_SUCCESS for VDSL vlan interfaces while DP registration
+---
+ drivers/net/ethernet/lantiq/datapath/datapath_api.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/datapath_api.c b/drivers/net/ethernet/lantiq/datapath/datapath_api.c
+index 821e2b474112..5bf3af36ae37 100644
+--- a/drivers/net/ethernet/lantiq/datapath/datapath_api.c
++++ b/drivers/net/ethernet/lantiq/datapath/datapath_api.c
+@@ -1065,7 +1065,7 @@ int32_t dp_get_netif_subifid(struct net_device *netif, struct sk_buff *skb,
+ 	memcpy(subif, &dp_subif->subif, sizeof(*subif));
+ 	subifid_fn_t = dp_subif->subif_fn;
+ 	rcu_read_unlock_bh();
+-	if (subifid_fn_t && !(flags & DP_F_SUBIF_LOGICAL)) {
++	if (subifid_fn_t) {
+ 		/*subif->subif will be set by callback api itself */
+ 		res =
+ 		    subifid_fn_t(netif, skb, subif_data, dst_mac, subif,

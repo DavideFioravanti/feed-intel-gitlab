@@ -1,0 +1,27 @@
+From c8f7f0464a2484331d111cec0dfc06a942de29be Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 16 Oct 2018 10:36:23 +0200
+Subject: [PATCH] Merge pull request #227 in SW_UGW/linux from
+ UGW_SW-31553-system-call-traces-in-ltq_tso_xmit-22951 to master
+
+* commit '3e0d9cb5cee0113cfe877c07fd450afe9393c5a9':
+  UGW_SW-31553-system-call-traces-in-ltq_tso_xmit -set to polling mode
+---
+ drivers/net/ethernet/lantiq/ltq_toe_drv.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/ltq_toe_drv.c b/drivers/net/ethernet/lantiq/ltq_toe_drv.c
+index 19fd0d5c6842..a2b0be273802 100644
+--- a/drivers/net/ethernet/lantiq/ltq_toe_drv.c
++++ b/drivers/net/ethernet/lantiq/ltq_toe_drv.c
+@@ -71,8 +71,8 @@ static unsigned char __iomem *ltq_toe_membase; /* Virtual */
+ /*static const unsigned char __iomem *lro_sram_membase_res0 = (unsigned char *)0xE2013000;*/
+ static unsigned char __iomem *lro_sram_membase_res0;
+ /*static unsigned int lro_sram_membase_res1 = 0xE2013100;*/
+-static u32 g_tso_polling_mode;
+-static u32 g_tso_irq_mode = 1;
++static u32 g_tso_polling_mode = 1;
++static u32 g_tso_irq_mode;
+ 
+ static struct device *g_toe_dev;
+ 

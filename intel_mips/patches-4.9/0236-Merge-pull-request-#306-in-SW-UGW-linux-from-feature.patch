@@ -1,0 +1,51 @@
+From e702bdd74e24c43879f4e8115e27a26029b9f6a4 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Fri, 30 Nov 2018 05:23:43 +0100
+Subject: [PATCH] Merge pull request #306 in SW_UGW/linux from
+ feature/PONRTSYS-2649-configure-gswip-queue-assignment to master
+
+* commit '086beb955ef0bddd5fc38d480618eb4f2089d586':
+  Egress LPID 0 changing to top to be in order
+  All traffic class 0 - 15 with destination as CPU is changing to Q27, which has high priority
+---
+ drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
+index 25b441b94c4d..0f164cb422c4 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
+@@ -37,7 +37,6 @@ static struct _gsw_pce_path gsw_pce_path[] = {
+ 	{ LOG_9,	X,	0,	0,	24,	PMAC_0},
+ 	{ LOG_10,	X,	0,	0,	24,	PMAC_0},
+ 	{ LOG_11,	X,	0,	0,	24,	PMAC_0},
+-	{ LOG_0,	X,	0,	0,	24,	PMAC_0},
+ 	/* QID 25 */
+ 	{ LOG_3,	X,	1,	1,	25,	PMAC_0},
+ 	{ LOG_4,	X,	1,	1,	25,	PMAC_0},
+@@ -48,7 +47,6 @@ static struct _gsw_pce_path gsw_pce_path[] = {
+ 	{ LOG_9,	X,	1,	1,	25,	PMAC_0},
+ 	{ LOG_10,	X,	1,	1,	25,	PMAC_0},
+ 	{ LOG_11,	X,	1,	1,	25,	PMAC_0},
+-	{ LOG_0,	X,	1,	1,	25,	PMAC_0},
+ 	/* QID 26 */
+ 	{ LOG_3,	X,	2,	2,	26,	PMAC_0},
+ 	{ LOG_4,	X,	2,	2,	26,	PMAC_0},
+@@ -59,8 +57,8 @@ static struct _gsw_pce_path gsw_pce_path[] = {
+ 	{ LOG_9,	X,	2,	2,	26,	PMAC_0},
+ 	{ LOG_10,	X,	2,	2,	26,	PMAC_0},
+ 	{ LOG_11,	X,	2,	2,	26,	PMAC_0},
+-	{ LOG_0,	X,	2,	2,	26,	PMAC_0},
+ 	/* QID 27 */
++	{ LOG_0,	X,	0,	15,	27,	PMAC_0},
+ 	{ LOG_3,	X,	3,	15,	27,	PMAC_0},
+ 	{ LOG_4,	X,	3,	15,	27,	PMAC_0},
+ 	{ LOG_5,	X,	3,	15,	27,	PMAC_0},
+@@ -70,7 +68,6 @@ static struct _gsw_pce_path gsw_pce_path[] = {
+ 	{ LOG_9,	X,	3,	15,	27,	PMAC_0},
+ 	{ LOG_10,	X,	3,	15,	27,	PMAC_0},
+ 	{ LOG_11,	X,	3,	15,	27,	PMAC_0},
+-	{ LOG_0,	X,	3,	15,	27,	PMAC_0},
+ };
+ 
+ /* Do the GSWIP PCE Q-MAP configuration */

@@ -1,0 +1,45 @@
+From 4dd7ae2f61ab29be9567a519fb86753930fa241e Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 24 Jul 2018 16:51:11 +0200
+Subject: [PATCH] Merge pull request #95 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-728-cpu-stall-detected-on-reboot-when-on-demand to master
+
+* commit '390c5df543d537a6adca43df51efd32b7bcb128e':
+  DRVLIB_SW-728: mips: Revert arch_irq_work_has_interrupt
+---
+ arch/mips/Kbuild                 |  2 --
+ arch/mips/include/asm/irq_work.h | 13 -------------
+ 2 files changed, 15 deletions(-)
+
+diff --git a/arch/mips/Kbuild b/arch/mips/Kbuild
+index f1993963a704..5c3f688a5232 100644
+--- a/arch/mips/Kbuild
++++ b/arch/mips/Kbuild
+@@ -3,8 +3,6 @@
+ # CFLAGS_<file.o> := -Wno-error
+ subdir-ccflags-y := -Werror
+ 
+-generic-y += irq_work.h
+-
+ # platform specific definitions
+ include arch/mips/Kbuild.platforms
+ obj-y := $(platform-y)
+diff --git a/arch/mips/include/asm/irq_work.h b/arch/mips/include/asm/irq_work.h
+deleted file mode 100644
+index 812f901c1d96..000000000000
+--- a/arch/mips/include/asm/irq_work.h
++++ /dev/null
+@@ -1,13 +0,0 @@
+-#ifndef _ASM_IRQ_WORK_H
+-#define _ASM_IRQ_WORK_H
+-
+-static inline bool arch_irq_work_has_interrupt(void)
+-{
+-#ifndef CONFIG_SMP
+-	return false;
+-#else
+-	return true;
+-#endif
+-}
+-
+-#endif /* _ASM_IRQ_WORK_H */

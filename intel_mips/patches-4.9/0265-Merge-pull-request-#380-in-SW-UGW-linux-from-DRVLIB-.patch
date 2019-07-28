@@ -1,0 +1,34 @@
+From 2615bec92699c84547fd0be0338305f3530302b8 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 8 Jan 2019 05:24:09 +0100
+Subject: [PATCH] Merge pull request #380 in SW_UGW/linux from
+ DRVLIB_SW-1091-replace-falconmx-with-prx300-in-ltq_eth_drv_xrx500.c to master
+
+* commit '17d427fa72193dcade5013301dcc677d6072b4f0':
+  DRVLIB_SW-1091: replace "falconmx" with "PRX300" in drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+---
+ drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+index 5bde7a99a0d6..b1966eb1a2a3 100644
+--- a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
++++ b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+@@ -2072,7 +2072,7 @@ static const struct ltq_net_soc_data xrx500_net_data = {
+ 	.phy_connect_func = &xrx500_mdio_probe,
+ };
+ 
+-static const struct ltq_net_soc_data falconmx_net_data = {
++static const struct ltq_net_soc_data prx300_net_data = {
+ 	.need_defer = false,
+ 	.hw_checksum = false,
+ 	.queue_num = 8,
+@@ -2081,7 +2081,7 @@ static const struct ltq_net_soc_data falconmx_net_data = {
+ 
+ static const struct of_device_id ltq_eth_drv_match[] = {
+ 	{ .compatible = "lantiq,xrx500-eth", .data = &xrx500_net_data},
+-	{ .compatible = "lantiq,falconmx-eth", .data = &falconmx_net_data},
++	{ .compatible = "lantiq,prx300-eth", .data = &prx300_net_data},
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, ltq_eth_drv_match);

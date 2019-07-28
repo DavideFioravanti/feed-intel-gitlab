@@ -1,0 +1,34 @@
+From c6e56cf5679ebfe2b186c6aa446b4462689a6886 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Thu, 14 Mar 2019 20:21:31 +0100
+Subject: [PATCH] Merge pull request #574 in SW_UGW/linux from
+ bugfix/UGW_SW-36180-8.1.1_5.4.2.50.2-observed-kernel-panic-8.3.1 to 8.3.1
+
+* commit 'c211613ccd381af7794a97e2acb86fe9445fd8eb':
+  UGW_SW-36180: To fix null pointer access in VAP unregister case
+---
+ net/mcast_helper/mcast_helper.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/net/mcast_helper/mcast_helper.c b/net/mcast_helper/mcast_helper.c
+index 1d75bf6bdf01..c38697b1017b 100644
+--- a/net/mcast_helper/mcast_helper.c
++++ b/net/mcast_helper/mcast_helper.c
+@@ -1796,6 +1796,8 @@ static long mcast_helper_ioctl(struct file *f, unsigned int cmd, unsigned long a
+ 			rxnetdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.rxIntrfName);
+ 
+ #endif
++			if (rxnetdev == NULL || netdev == NULL)
++				return -ENXIO;
+ 
+ 			mch_br_capture_pkt = 0;
+ 			mcast_helper_update_entry(netdev, rxnetdev, &mcast_mem);
+@@ -1811,6 +1813,8 @@ static long mcast_helper_ioctl(struct file *f, unsigned int cmd, unsigned long a
+ 			netdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.memIntrfName);
+ 			rxnetdev = mcast_helper_dev_get_by_name(&init_net, mcast_mem.rxIntrfName);
+ #endif
++			if (rxnetdev == NULL || netdev == NULL)
++				return -ENXIO;
+ 
+ 			mch_br_capture_pkt = 0;
+ 			mcast_helper_delete_entry(netdev, rxnetdev, &mcast_mem);

@@ -1,0 +1,49 @@
+From ad87f098cea611ddc0066bbb4fd5f23100ca8130 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 26 Mar 2019 17:37:22 +0100
+Subject: [PATCH] Merge pull request #606 in SW_UGW/linux from
+ bugfix/UGW_SW-37200-eogre-acceleration-fix-8.3.1 to 8.3.1
+
+* commit '98de7a05db8d40b3a100c54bd23109d4196a1491':
+  UGW_SW-37200 : Fixed gretap device detection condition for EoGRE acceleration.
+---
+ net/ipv4/ip_gre.c  | 7 ++++++-
+ net/ipv6/ip6_gre.c | 7 ++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/net/ipv4/ip_gre.c b/net/ipv4/ip_gre.c
+index dc499d7e44fb..72b82ac5533c 100644
+--- a/net/ipv4/ip_gre.c
++++ b/net/ipv4/ip_gre.c
+@@ -1193,7 +1193,12 @@ extern uint32_t (*ppa_is_ipv4_gretap_fn)(struct net_device *dev);
+ 
+ static u32 ppa_is_ipv4_gretap(struct net_device *dev)
+ {
+-	return (dev && (dev->netdev_ops == (&gre_tap_netdev_ops)));
++	/* NOTE:
++	 * To include acelerated counters in gre_tap net_device stats,
++	 * gre_tap netdev_ops pointer (i.e., @gre_tap_netdev_ops) can be modified with a new one.
++	 * This is specifically to overload @ndo_get_stats64, but @ndo_init remains unchanged.
++	 */
++	return (dev && dev->netdev_ops && (dev->netdev_ops->ndo_init == gre_tap_netdev_ops.ndo_init));
+ }
+ #endif
+ 
+diff --git a/net/ipv6/ip6_gre.c b/net/ipv6/ip6_gre.c
+index 6584333a1b9f..c51aec0956ab 100644
+--- a/net/ipv6/ip6_gre.c
++++ b/net/ipv6/ip6_gre.c
+@@ -1574,7 +1574,12 @@ extern uint32_t (*ppa_is_ipv6_gretap_fn)(struct net_device *dev);
+ 
+ static u32 ppa_is_ipv6_gretap(struct net_device *dev)
+ {
+-	return (dev && (dev->netdev_ops == (&ip6gre_tap_netdev_ops)));
++	/* NOTE:
++	 * To include acelerated counters in ip6gre_tap net_device stats,
++	 * ip6gre_tap netdev_ops pointer (i.e., @ip6gre_tap_netdev_ops) can be modified with a new one.
++	 * This is specifically to overload @ndo_get_stats64, but @ndo_init remains unchanged.
++	 */
++	return (dev && dev->netdev_ops && (dev->netdev_ops->ndo_init == ip6gre_tap_netdev_ops.ndo_init));
+ }
+ #endif
+ 

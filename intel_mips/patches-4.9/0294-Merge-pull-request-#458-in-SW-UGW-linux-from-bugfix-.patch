@@ -1,0 +1,33 @@
+From e970a322f9604618f23b688e89f3d07d33049615 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 13 Feb 2019 03:58:24 +0100
+Subject: [PATCH] Merge pull request #458 in SW_UGW/linux from
+ bugfix/UGW_SW-34667-rechability-to-dns-sever-2001-db8-1000-1-from-elan_win7-failed
+ to master
+
+* commit 'e8ffa84a434ff19b876c6d3fc16a4c36e88abf63':
+  UGW_SW-34667: Reverting icmpv6 flooding changes
+---
+ net/bridge/ltq_br_mcast_snooping.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/net/bridge/ltq_br_mcast_snooping.c b/net/bridge/ltq_br_mcast_snooping.c
+index 3cfef1f25920..b7f148032794 100644
+--- a/net/bridge/ltq_br_mcast_snooping.c
++++ b/net/bridge/ltq_br_mcast_snooping.c
+@@ -580,13 +580,13 @@ static int br_selective_flood6(struct net_bridge_port *p, struct sk_buff *skb)
+ 			case ICMPV6_MGM_REPORT:
+ 			case ICMPV6_MGM_REDUCTION:
+ 			case ICMPV6_MLD2_REPORT:
+-				return 0;	/* Allow control packets */
++				return 1;	/* Allow control packets */
+ 			default:
+ 				break;
+ 			}
+ 		}
+ 	} else if (iph->nexthdr == IPPROTO_ICMPV6) {
+-		return 0;       /* Allow all other ICMPv6 packets  */
++		return 1;       /* Allow all other ICMPv6 packets  */
+ 	}
+ 
+ 	return br_snoop_multicast_data(p, &daddr, &saddr);

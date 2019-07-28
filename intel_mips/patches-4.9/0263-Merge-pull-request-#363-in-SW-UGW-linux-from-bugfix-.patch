@@ -1,0 +1,30 @@
+From 5ff87277535c7e9f51a569d7d5e7ad84794bc440 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 7 Jan 2019 10:07:26 +0100
+Subject: [PATCH] Merge pull request #363 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-1043-clear-ld-bit-for-ljpll to master
+
+* commit '1312526888ca60f92d7f82116add03562254ae7f':
+  DRVLIB_SW-1043: clear LD bit for LJPLL
+---
+ drivers/clk/intel/clk-cgu-pll.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/clk/intel/clk-cgu-pll.c b/drivers/clk/intel/clk-cgu-pll.c
+index da44422eae73..4e2ea5cb615c 100644
+--- a/drivers/clk/intel/clk-cgu-pll.c
++++ b/drivers/clk/intel/clk-cgu-pll.c
+@@ -245,6 +245,13 @@ prx300_pll_set_params(struct intel_clk_pll *pll, unsigned int mult,
+ 	intel_set_clk_val(pll->map, pll->reg + 0x8, 18, 6, div);
+ 	intel_set_clk_val(pll->map, pll->reg, 2, 24, frac);
+ 	intel_set_clk_val(pll->map, pll->reg, 28, 1, !!frac);
++
++	if (pll->type == TYPE_LJPLL) {
++		intel_set_clk_val(pll->map, pll->reg, 31, 1, 1);
++		udelay(1);
++		intel_set_clk_val(pll->map, pll->reg, 31, 1, 0);
++	}
++
+ 	return intel_pll_wait_for_lock(pll);
+ }
+ 

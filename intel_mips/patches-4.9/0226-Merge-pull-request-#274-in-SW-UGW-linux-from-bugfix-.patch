@@ -1,0 +1,127 @@
+From eb3738f8fc0908964f10902457fd9bb9f1b2cc54 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Wed, 14 Nov 2018 14:03:47 +0100
+Subject: [PATCH] Merge pull request #274 in SW_UGW/linux from
+ bugfix/PMCPESYS-104-random-hang-crashes-at-1v15vdd-initialization to master
+
+* commit 'c014958bf86b8c66dd5ac9ff8656fd333ed82712':
+  PMCPESYS-104: regulator: tps65273: Set config.of_node properly
+  PMCPESYS-104: regulator: tps65273: Fix minor coding style issues
+  PMCPESYS-104: regulator: tps65273: Fix integer to pointer conversion
+  PMCPESYS-104: regulator: tps65273: Don't apply constraints initially
+---
+ drivers/regulator/tps65273-regulator.c | 46 ++++++++++++++++++++--------------
+ 1 file changed, 27 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/regulator/tps65273-regulator.c b/drivers/regulator/tps65273-regulator.c
+index 8e7b7abe8be6..3efa380c3bf3 100755
+--- a/drivers/regulator/tps65273-regulator.c
++++ b/drivers/regulator/tps65273-regulator.c
+@@ -64,13 +64,13 @@
+ 
+ #define tps65273_reg_desc(num) {			\
+ 	.name		= "BUCK"#num,			\
+-	.of_match	= of_match_ptr("BUCK"#num),	\
++	.of_match	= NULL,				\
+ 	.regulators_node = of_match_ptr("regulators"),	\
+-	.id		= TPS65273_BUCK##num##_ID,		\
++	.id		= TPS65273_BUCK##num##_ID,	\
+ 	.ops		= &tps65273_ops,		\
+ 	.type		= REGULATOR_VOLTAGE,		\
+ 	.owner		= THIS_MODULE,			\
+-	.n_voltages     = ARRAY_SIZE(vout_vsel_table),	\
++	.n_voltages	= ARRAY_SIZE(vout_vsel_table),	\
+ 	.volt_table	= vout_vsel_table,		\
+ 	.vsel_reg	= TPS65273_REG_VOUT##num##_SEL,	\
+ 	.vsel_mask	= TPS65273_VOUT_SEL_MASK,	\
+@@ -82,11 +82,16 @@
+ 	.uV_step	= TPS65273_STEP_VOLTAGE		\
+ }
+ 
++struct tps65273_regulator_init_data {
++	struct device_node *of_node;
++	struct regulator_init_data *init_data;
++};
++
+ struct tps65273_platform_data {
+ 	u32 slew_rate[TPS65273_NUM_REGULATOR];
+ 	u32 psm_mode[TPS65273_NUM_REGULATOR];
+ 	u32 vout_init_sel[TPS65273_NUM_REGULATOR];
+-	struct regulator_init_data *init_data[TPS65273_NUM_REGULATOR];
++	struct tps65273_regulator_init_data rdata[TPS65273_NUM_REGULATOR];
+ };
+ 
+ struct tps_driver_data {
+@@ -163,7 +168,7 @@ static struct tps65273_platform_data *tps65273_parse_dt(struct device *dev)
+ 
+ 	rmatch = devm_kzalloc(dev, sizeof(*rmatch) * rnum, GFP_KERNEL);
+ 	if (!rmatch)
+-		return -ENOMEM;
++		return ERR_PTR(-ENOMEM);
+ 
+ 	for (i = 0; i < rnum; i++)
+ 		rmatch[i].name = tps65273_regulators[i].name;
+@@ -176,34 +181,37 @@ static struct tps65273_platform_data *tps65273_parse_dt(struct device *dev)
+ 
+ 	for (i = 0; i < rnum; i++) {
+ 		struct regulator_init_data *init_data;
++		struct device_node *of_node;
+ 
+ 		init_data = rmatch[i].init_data;
+-		if (!init_data || !rmatch[i].of_node)
++		of_node = rmatch[i].of_node;
++
++		if (!init_data || !of_node)
+ 			continue;
+ 
+-		pd->init_data[i] = init_data;
+-		if (of_property_read_u32(rmatch[i].of_node,
+-						"vout-slew-rate",
+-						&pd->slew_rate[i])) {
++		pd->rdata[i].init_data = init_data;
++		pd->rdata[i].of_node = of_node;
++
++		if (of_property_read_u32(of_node, "vout-slew-rate",
++					 &pd->slew_rate[i])) {
+ 			dev_warn(dev, "Slew rate not specified\n");
+ 			pd->slew_rate[i] = 0;
+ 		}
+ 
+-		if (of_property_read_u32(rmatch[i].of_node,
+-						"vout-psm-mode",
+-						&pd->psm_mode[i])) {
++		if (of_property_read_u32(of_node, "vout-psm-mode",
++					 &pd->psm_mode[i])) {
+ 			dev_warn(dev, "PSM mode not specified\n");
+ 			pd->psm_mode[i] = 0;
+ 		}
+ 
+-		if (of_property_read_u32(rmatch[i].of_node,
+-						"vout-init-selector",
+-						&pd->vout_init_sel[i])) {
++		if (of_property_read_u32(of_node, "vout-init-selector",
++					 &pd->vout_init_sel[i])) {
+ 			dev_warn(dev, "VOUT init  not specified\n");
+ 			pd->vout_init_sel[i] = 0;
+ 		}
+ 
+ 		init_data->constraints.valid_modes_mask = REGULATOR_MODE_NORMAL;
++		init_data->constraints.apply_uV = 0;
+ 	}
+ 
+ 	return pd;
+@@ -256,11 +264,11 @@ static int tps65273_probe(struct i2c_client *client,
+ 	config.regmap = tps->regmap;
+ 
+ 	for (i = 0; i < TPS65273_NUM_REGULATOR; i++) {
+-		if (!tps->pdata->init_data[i])
++		if (!tps->pdata->rdata[i].init_data)
+ 			continue;
+ 
+-		config.init_data = pdata->init_data[i];
+-		config.of_node = client->dev.of_node;
++		config.init_data = pdata->rdata[i].init_data;
++		config.of_node = pdata->rdata[i].of_node;
+ 
+ 		tps->rdev[i] = devm_regulator_register(&client->dev,
+ 					&tps->driver_data->desc[i], &config);

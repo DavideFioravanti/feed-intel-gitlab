@@ -1,0 +1,318 @@
+From d65f19917e703a0683c3ef698b92a854a0a28367 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 3 Sep 2018 11:49:03 +0200
+Subject: [PATCH] Merge pull request #155 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-395-pon_timestamp_fix to master
+
+* commit '64184cc924481ec3164218d9bebafedd4b76e2ee':
+  Compilation Error resolved for GRX500
+  Ignore the undersize error, which cause Ping Failure
+  Fix for accidentally removed a change during 2 pull request merges
+  Fix the checkpatch error and warnings
+  Remove Space and Trailing white spaces
+  PONRTSYS-1899: Fix for removing timestamp for RX packet from PON
+---
+ .../net/ethernet/lantiq/datapath/datapath_api.c    | 13 +++++
+ .../lantiq/datapath/gswip31/datapath_misc.c        | 10 +++-
+ .../net/ethernet/lantiq/switch-api/gsw_defconf.c   | 20 ++++++++
+ .../net/ethernet/lantiq/switch-api/gsw_defconf.h   |  1 +
+ .../net/ethernet/lantiq/switch-api/gsw_flow_core.c |  5 +-
+ .../net/ethernet/lantiq/switch-api/mac/mac_cfg.c   | 60 ++++++++++++++++++++++
+ .../net/ethernet/lantiq/switch-api/mac/mac_cfg.h   |  1 +
+ include/net/switch_api/mac_ops.h                   | 57 ++++++++++++++++++++
+ 8 files changed, 163 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/datapath_api.c b/drivers/net/ethernet/lantiq/datapath/datapath_api.c
+index 6a2bdf9ed3e1..0ce8fa21f935 100644
+--- a/drivers/net/ethernet/lantiq/datapath/datapath_api.c
++++ b/drivers/net/ethernet/lantiq/datapath/datapath_api.c
+@@ -1846,6 +1846,8 @@ static void rx_dbg_zero_port(struct sk_buff *skb, struct dma_rx_desc_0 *desc0,
+ 			 "Recv Data");
+ }
+ 
++#define DP_TS_HDRLEN	10
++
+ static inline int32_t dp_rx_one_skb(struct sk_buff *skb, uint32_t flags)
+ {
+ 	int res = DP_SUCCESS;
+@@ -1930,6 +1932,17 @@ static inline int32_t dp_rx_one_skb(struct sk_buff *skb, uint32_t flags)
+ 			ops->do_rx_hwts(ops, skb);
+ 	}
+ #endif
++	/*PON traffic always have timestamp attached,removing Timestamp */
++	if (dp_port->alloc_flags & (DP_F_GPON | DP_F_EPON)) {
++		/* Stripping of last 10 bytes timestamp */
++#if IS_ENABLED(CONFIG_LTQ_DATAPATH_PTP1588)
++		if (!dp_port->f_ptp)
++			__pskb_trim(skb, skb->len - DP_TS_HDRLEN);
++#else
++		__pskb_trim(skb, skb->len - DP_TS_HDRLEN);
++#endif
++	}
++
+ 	rx_fn = dp_port->cb.rx_fn;
+ 	if (likely(rx_fn && dp_port->status)) {
+ 		/*Clear some fields as SWAS V3.7 required */
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+index e3817399f36b..13c6134f4805 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+@@ -768,7 +768,6 @@ static int dp_platform_set(int inst, u32 flag)
+ }
+ 
+ #define DP_GSWIP_CRC_DISABLE 1
+-#define DP_GSWIP_FCS_DISABLE 0
+ #define DP_GSWIP_FLOW_CTL_DISABLE 4
+ static int pon_config(int inst, int ep, struct dp_port_data *data, u32 flags)
+ {
+@@ -806,7 +805,14 @@ static int pon_config(int inst, int ep, struct dp_port_data *data, u32 flags)
+ 
+ 	/* Disables RX/TX Flow control */
+ 	mac_ops->set_flow_ctl(mac_ops, DP_GSWIP_FLOW_CTL_DISABLE);
+-	mac_ops->set_sptag(mac_ops, SPTAG_MODE_REPLACE);
++
++	/* Replace Tx Special Tag Byte 2 & Byte 3 with packet length */
++	mac_ops->mac_op_cfg(mac_ops, TX_SPTAG_REPLACE);
++
++	/* Indicate GSWIP that packet coming from PON have timestamp
++	 * In acceleration path, GSWIP can remove the timestamp
++	 */
++	mac_ops->mac_op_cfg(mac_ops, RX_TIME_NO_INSERT);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
+index 2cac03bf439d..259a8c1624a1 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
+@@ -207,6 +207,26 @@ int gsw_get_def_bypass_qmap(struct core_ops *ops)
+ 	return 0;
+ }
+ 
++int gsw_misc_config(struct core_ops *ops)
++{
++	GSW_register_t reg;
++	ethsw_api_dev_t *gswdev = GSW_PDATA_GET(ops);
++	int i = 0;
++	
++	/* Ignore Undersized frames and forward to CPU for the MAC ports 
++	 * MAC logical ports start from 2
++	 */
++	for (i = 0; i < gswdev->pnum; i++) {
++		reg.nRegAddr = ((SDMA_PRIO_USIGN_OFFSET + (2*6)) + (i * 6));
++		ops->gsw_common_ops.RegisterGet(ops, &reg);
++
++		reg.nData |= (1 << SDMA_PRIO_USIGN_SHIFT);
++		ops->gsw_common_ops.RegisterSet(ops, &reg);
++	}
++
++	return 0;
++}
++
+ /* Default Qos WRED Config in switch */
+ int gsw_qos_def_config(struct core_ops *ops)
+ {
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.h b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.h
+index 84e91922743f..0406ae05f6e7 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.h
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.h
+@@ -54,6 +54,7 @@ int gsw_get_def_pce_qmap(struct core_ops *ops);
+ int gsw_set_def_bypass_qmap(struct core_ops *ops, GSW_QoS_qMapMode_t q_map_mode);
+ int gsw_get_def_bypass_qmap(struct core_ops *ops);
+ int gsw_qos_def_config(struct core_ops *ops);
++int gsw_misc_config(struct core_ops *ops);
+ 
+ int gsw_pmac_init_nondpu(void);
+ int gsw_pmac_init_dpu(void);
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c b/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
+index 4e36d1fd259e..fefdb3b908bd 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
+@@ -3104,6 +3104,7 @@ static GSW_return_t switch_core_init(void *cdev)
+ 		gsw_set_def_pce_qmap(cdev);
+ 		gsw_pmac_init_nondpu();
+ 		gsw_qos_def_config(cdev);
++		gsw_misc_config(cdev);
+ #else
+ 
+ 		/*Emulation/PC tool*/
+@@ -17176,7 +17177,7 @@ GSW_return_t GSW_CPU_PortCfgGet(void *cdev, GSW_CPU_PortCfg_t *parm)
+ 					goto UNLOCK_AND_RETURN;
+ 				}
+ 
+-				parm->bFcsGenerate = ops->get_fcsgen(ops);
++				parm->bFcsTxOps = ops->get_fcsgen(ops);
+ #endif
+ 			}
+ 		}
+@@ -17309,7 +17310,7 @@ GSW_return_t GSW_CPU_PortCfgSet(void *cdev, GSW_CPU_PortCfg_t *parm)
+ 					goto UNLOCK_AND_RETURN;
+ 				}
+ 
+-				ops->set_fcsgen(ops, 1);
++				ops->set_fcsgen(ops, parm->bFcsTxOps);
+ #endif
+ 			}
+ 		}
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
+index 9ea163fe7570..4caba3325e53 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
+@@ -613,6 +613,64 @@ int mac_get_mtu(void *pdev)
+ 	return mtu;
+ }
+ 
++int mac_oper_cfg(void *pdev, MAC_OPER_CFG oper)
++{
++
++	struct mac_prv_data *pdata = GET_MAC_PDATA(pdev);
++	u32 mode;
++
++#ifdef __KERNEL__
++	spin_lock_bh(&pdata->mac_lock);
++#endif
++	mode = oper % 4;
++
++	switch (oper) {
++	case TX_FCS_NO_INSERT:
++	case TX_FCS_INSERT:
++		gswss_set_mac_txfcs_ins_op(pdev, mode);
++		break;
++
++	case TX_FCS_NO_REMOVE:
++	case TX_FCS_REMOVE:
++		gswss_set_mac_txfcs_rm_op(pdev, mode);
++		break;
++
++	case TX_SPTAG_KEEP:
++	case TX_SPTAG_NOTAG:
++	case TX_SPTAG_REMOVE:
++	case TX_SPTAG_REPLACE:
++		gswss_set_mac_txsptag_op(pdev, mode);
++		break;
++
++	case RX_FCS_NOFCS:
++	case RX_FCS_NO_REMOVE:
++	case RX_FCS_REMOVE:
++		gswss_set_mac_rxfcs_op(pdev, mode);
++		break;
++
++	case RX_TIME_INSERT:
++	case RX_TIME_NOTS:
++	case RX_TIME_NO_INSERT:
++		gswss_set_mac_rxtime_op(pdev, mode);
++		break;
++
++	case RX_SPTAG_INSERT:
++	case RX_SPTAG_NOTAG:
++	case RX_SPTAG_NO_INSERT:
++		gswss_set_mac_rxsptag_op(pdev, mode);
++		break;
++
++	default:
++		break;
++	}
++
++#ifdef __KERNEL__
++	spin_unlock_bh(&pdata->mac_lock);
++#endif
++
++	return 0;
++}
++
+ static int mac_set_rxcrccheck(void *pdev, u8 disable)
+ {
+ 	struct mac_prv_data *pdata = GET_MAC_PDATA(pdev);
+@@ -1341,4 +1399,6 @@ void mac_init_fn_ptrs(struct mac_ops *mac_op)
+ 	mac_op->IRQ_Enable = mac_irq_event_enable;
+ 	mac_op->IRQ_Register = mac_irq_register;
+ 	mac_op->IRQ_UnRegister = mac_irq_unregister;
++
++	mac_op->mac_op_cfg = mac_oper_cfg;
+ }
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.h b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.h
+index d70a8167dfaf..7135f1efe456 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.h
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.h
+@@ -61,5 +61,6 @@ int mac_irq_unregister(void *pdev, GSW_Irq_Op_t *irq);
+ int mac_int_enable(void *pdev);
+ int mac_int_disable(void *pdev);
+ 
++int mac_oper_cfg(void *pdev, MAC_OPER_CFG oper);
+ #endif
+ 
+diff --git a/include/net/switch_api/mac_ops.h b/include/net/switch_api/mac_ops.h
+index d685a66b8ff3..cb8bdec65092 100644
+--- a/include/net/switch_api/mac_ops.h
++++ b/include/net/switch_api/mac_ops.h
+@@ -16,6 +16,57 @@
+ #include <linux/netdevice.h>
+ #endif
+ 
++typedef enum  {
++	/* Adaption layer does not insert FCS */
++	TX_FCS_NO_INSERT = 0,
++	/* Adaption layer insert FCS */
++	TX_FCS_INSERT,
++	/* Reserved 1 */
++	TX_FCS_RES1,
++	/* Reserved 2 */
++	TX_FCS_RES2,
++	/* FDMA does not remove FCS */
++	TX_FCS_NO_REMOVE,
++	/* FDMA remove FCS */
++	TX_FCS_REMOVE,
++	/* Reserved 3 */
++	TX_FCS_RES3,
++	/* Reserved 4 */
++	TX_FCS_RES4,
++	/* Packet does not have special tag and special tag is not removed */
++	TX_SPTAG_NOTAG,
++	/* Packet has special tag and special tag is replaced */
++	TX_SPTAG_REPLACE,
++	/* Packet has special tag and special tag is not removed */
++	TX_SPTAG_KEEP,
++	/* Packet has special tag ans special tag is removed */
++	TX_SPTAG_REMOVE,
++	/* Packet does not have FCS and FCS is not removed */
++	RX_FCS_NOFCS,
++	/* Reserved */
++	RX_FCS_RES,
++	/* Packet has FCS and FCS is not removed */
++	RX_FCS_NO_REMOVE,
++	/* Packet has FCS and FCS is removed */
++	RX_FCS_REMOVE,
++	/* Packet does not have time stamp and time stamp is not inserted */
++	RX_TIME_NOTS,
++	/* Packet does not have time stamp and time stamp is inserted */
++	RX_TIME_INSERT,
++	/* Packet has time stamp and time stamp is not inserted */
++	RX_TIME_NO_INSERT,
++	/* Reserved */
++	RX_TIME_RES,
++	/* Packet does not have special tag and special tag is not inserted. */
++	RX_SPTAG_NOTAG,
++	/* Packet does not have special tag and special tag is inserted. */
++	RX_SPTAG_INSERT,
++	/* Packet has special tag and special tag is not inserted. */
++	RX_SPTAG_NO_INSERT,
++	/* Reserved */
++	RX_SPTAG_RES,
++} MAC_OPER_CFG;
++
+ struct mac_ops {
+ 	/* This function Sets the Flow Ctrl operation in Both XGMAC and LMAC.
+ 	 * param[in/out]IN:	ops	MAC ops Struct registered for MAC 0/1/2.
+@@ -432,6 +483,12 @@ struct mac_ops {
+ 	 * return	OUT	int -	Success/Fail
+ 	 */
+ 	int (*mac_int_dis)(void *);
++	/* This sequence is used for Configuring Mac operation
++	 * param[in/out]IN:	ops -	MAC ops Struct registered for MAC 0/1/2.
++	 * param[in/out]IN:	MAC_OP_CFG - operation to perform
++	 * return	OUT	int -	Success/Fail
++	 */
++	int (*mac_op_cfg)(void *, MAC_OPER_CFG);
+ };
+ 
+ #endif

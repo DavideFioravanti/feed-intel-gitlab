@@ -1,0 +1,22 @@
+From 482372cdc952473400842b816a00b347268d1471 Mon Sep 17 00:00:00 2001
+From: Hauke Mehrtens <hauke.mehrtens@intel.com>
+Date: Wed, 21 Feb 2018 19:05:53 +0100
+Subject: Revert "kernel: adjust mips highmem offset to avoid the need for
+ -mlong-calls on systems with >256M RAM"
+
+This reverts commit 46cb6caa2d7cf52fa3fc73d038ec620b18c24684.
+---
+ arch/mips/include/asm/mach-generic/spaces.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/arch/mips/include/asm/mach-generic/spaces.h
++++ b/arch/mips/include/asm/mach-generic/spaces.h
+@@ -48,7 +48,7 @@
+  * Memory above this physical address will be considered highmem.
+  */
+ #ifndef HIGHMEM_START
+-#define HIGHMEM_START		_AC(0x10000000, UL)
++#define HIGHMEM_START		_AC(0x20000000, UL)
+ #endif
+ 
+ #endif /* CONFIG_32BIT */

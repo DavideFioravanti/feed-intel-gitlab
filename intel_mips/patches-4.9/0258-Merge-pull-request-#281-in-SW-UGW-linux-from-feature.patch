@@ -1,0 +1,402 @@
+From 8bd4b53f2527cce511f343ad1f4497d184ddc59f Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Sat, 5 Jan 2019 22:40:25 +0100
+Subject: [PATCH] Merge pull request #281 in SW_UGW/linux from
+ feature/PONRTSYS-2432-back-port-tc-red-offload to master
+
+* commit 'd84dc0e710b52052098c774a5eaa4cbedcd43197':
+  net: sch: Don't warn on missmatching qlen and backlog for offloaded qdiscs
+  net_sched: call qlen_notify only if child qdisc is empty
+  net: sched: red: don't reset the backlog on every stat dump
+  net: sch: red: Change offloaded xstats to be incremental
+  net_sch: red: Fix the new offload indication
+  net: sched: Move to new offload indication in RED
+  net: sched: Move offload check till after dump call
+  net: sched: Add TCA_HW_OFFLOAD
+  net/sched/sch_red.c: work around gcc-4.4.4 anon union initializer issue
+  net_sch: red: Add offload ability to RED qdisc
+---
+ include/linux/netdevice.h      |  2 +
+ include/net/pkt_cls.h          | 30 +++++++++++++
+ include/net/sch_generic.h      |  1 +
+ include/uapi/linux/pkt_sched.h |  1 +
+ include/uapi/linux/rtnetlink.h |  3 ++
+ net/sched/sch_api.c            | 17 +++++++-
+ net/sched/sch_cbq.c            |  3 +-
+ net/sched/sch_drr.c            |  3 +-
+ net/sched/sch_hfsc.c           |  6 +--
+ net/sched/sch_htb.c            |  3 +-
+ net/sched/sch_qfq.c            |  3 +-
+ net/sched/sch_red.c            | 96 +++++++++++++++++++++++++++++++++++++++---
+ 12 files changed, 148 insertions(+), 20 deletions(-)
+
+diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
+index 941d90ed8bb2..695b17a82815 100644
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -790,6 +790,7 @@ enum {
+ 	TC_SETUP_CLSFLOWER,
+ 	TC_SETUP_MATCHALL,
+ 	TC_SETUP_CLSBPF,
++	TC_SETUP_QDISC_RED,
+ };
+ 
+ struct tc_cls_u32_offload;
+@@ -802,6 +803,7 @@ struct tc_to_netdev {
+ 		struct tc_cls_matchall_offload *cls_mall;
+ 		struct tc_cls_bpf_offload *cls_bpf;
+ 		struct tc_mqprio_qopt *mqprio;
++		struct tc_red_qopt_offload *sch_red;
+ 	};
+ };
+ 
+diff --git a/include/net/pkt_cls.h b/include/net/pkt_cls.h
+index 59ef0f5aff41..bf8dae8da262 100644
+--- a/include/net/pkt_cls.h
++++ b/include/net/pkt_cls.h
+@@ -520,4 +520,34 @@ struct tc_cls_bpf_offload {
+ 	u32 gen_flags;
+ };
+ 
++enum tc_red_command {
++	TC_RED_REPLACE,
++	TC_RED_DESTROY,
++	TC_RED_STATS,
++	TC_RED_XSTATS,
++};
++
++struct tc_red_qopt_offload_params {
++	u32 min;
++	u32 max;
++	u32 probability;
++	bool is_ecn;
++	struct gnet_stats_queue *qstats;
++};
++struct tc_red_qopt_offload_stats {
++	struct gnet_stats_basic_packed *bstats;
++	struct gnet_stats_queue *qstats;
++};
++
++struct tc_red_qopt_offload {
++	enum tc_red_command command;
++	u32 handle;
++	u32 parent;
++	union {
++		struct tc_red_qopt_offload_params set;
++		struct tc_red_qopt_offload_stats stats;
++		struct red_stats *xstats;
++	};
++};
++
+ #endif
+diff --git a/include/net/sch_generic.h b/include/net/sch_generic.h
+index 538f3c4458b0..722d641a6115 100644
+--- a/include/net/sch_generic.h
++++ b/include/net/sch_generic.h
+@@ -66,6 +66,7 @@ struct Qdisc {
+ #define TCQ_F_NOPARENT		0x40 /* root of its hierarchy :
+ 				      * qdisc_tree_decrease_qlen() should stop.
+ 				      */
++#define TCQ_F_OFFLOADED		0x200 /* qdisc is offloaded to HW */
+ 	u32			limit;
+ 	const struct Qdisc_ops	*ops;
+ 	struct qdisc_size_table	__rcu *stab;
+diff --git a/include/uapi/linux/pkt_sched.h b/include/uapi/linux/pkt_sched.h
+index 099bf5528fed..db33321db898 100644
+--- a/include/uapi/linux/pkt_sched.h
++++ b/include/uapi/linux/pkt_sched.h
+@@ -254,6 +254,7 @@ struct tc_red_qopt {
+ #define TC_RED_ECN		1
+ #define TC_RED_HARDDROP		2
+ #define TC_RED_ADAPTATIVE	4
++#define TC_RED_OFFLOADED	8
+ };
+ 
+ struct tc_red_xstats {
+diff --git a/include/uapi/linux/rtnetlink.h b/include/uapi/linux/rtnetlink.h
+index 5a78be518101..d5d551ff20a8 100644
+--- a/include/uapi/linux/rtnetlink.h
++++ b/include/uapi/linux/rtnetlink.h
+@@ -543,6 +543,9 @@ enum {
+ 	TCA_STATS2,
+ 	TCA_STAB,
+ 	TCA_PAD,
++	TCA_DUMP_INVISIBLE,
++	TCA_CHAIN,
++	TCA_HW_OFFLOAD,
+ 	__TCA_MAX
+ };
+ 
+diff --git a/net/sched/sch_api.c b/net/sched/sch_api.c
+index ea13df1be067..cb10a38ac67e 100644
+--- a/net/sched/sch_api.c
++++ b/net/sched/sch_api.c
+@@ -749,9 +749,11 @@ static u32 qdisc_alloc_handle(struct net_device *dev)
+ void qdisc_tree_reduce_backlog(struct Qdisc *sch, unsigned int n,
+ 			       unsigned int len)
+ {
++	bool qdisc_is_offloaded = sch->flags & TCQ_F_OFFLOADED;
+ 	const struct Qdisc_class_ops *cops;
+ 	unsigned long cl;
+ 	u32 parentid;
++	bool notify;
+ 	int drops;
+ 
+ 	if (n == 0 && len == 0)
+@@ -764,6 +766,17 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, unsigned int n,
+ 
+ 		if (sch->flags & TCQ_F_NOPARENT)
+ 			break;
++		/* Notify parent qdisc only if child qdisc becomes empty.
++		 *
++		 * If child was empty even before update then backlog
++		 * counter is screwed and we skip notification because
++		 * parent class is already passive.
++		 *
++		 * If the original child was offloaded then it is allowed
++		 * to be seem as empty, so the parent is notified anyway.
++		 */
++		notify = !sch->q.qlen && !WARN_ON_ONCE(!n &&
++						       !qdisc_is_offloaded);
+ 		/* TODO: perform the search on a per txq basis */
+ 		sch = qdisc_lookup(qdisc_dev(sch), TC_H_MAJ(parentid));
+ 		if (sch == NULL) {
+@@ -771,7 +784,7 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, unsigned int n,
+ 			break;
+ 		}
+ 		cops = sch->ops->cl_ops;
+-		if (cops->qlen_notify) {
++		if (notify && cops->qlen_notify) {
+ 			cl = cops->get(sch, parentid);
+ 			cops->qlen_notify(sch, cl);
+ 			cops->put(sch, cl);
+@@ -1366,6 +1379,8 @@ static int tc_fill_qdisc(struct sk_buff *skb, struct Qdisc *q, u32 clid,
+ 		goto nla_put_failure;
+ 	if (q->ops->dump && q->ops->dump(q, skb) < 0)
+ 		goto nla_put_failure;
++	if (nla_put_u8(skb, TCA_HW_OFFLOAD, !!(q->flags & TCQ_F_OFFLOADED)))
++		goto nla_put_failure;
+ 	qlen = q->q.qlen;
+ 
+ 	stab = rtnl_dereference(q->stab);
+diff --git a/net/sched/sch_cbq.c b/net/sched/sch_cbq.c
+index beb554aa8cfb..372668ed2aa3 100644
+--- a/net/sched/sch_cbq.c
++++ b/net/sched/sch_cbq.c
+@@ -1380,8 +1380,7 @@ static void cbq_qlen_notify(struct Qdisc *sch, unsigned long arg)
+ {
+ 	struct cbq_class *cl = (struct cbq_class *)arg;
+ 
+-	if (cl->q->q.qlen == 0)
+-		cbq_deactivate_class(cl);
++	cbq_deactivate_class(cl);
+ }
+ 
+ static unsigned long cbq_get(struct Qdisc *sch, u32 classid)
+diff --git a/net/sched/sch_drr.c b/net/sched/sch_drr.c
+index 8af5c59eef84..7395a2b5f03e 100644
+--- a/net/sched/sch_drr.c
++++ b/net/sched/sch_drr.c
+@@ -244,8 +244,7 @@ static void drr_qlen_notify(struct Qdisc *csh, unsigned long arg)
+ {
+ 	struct drr_class *cl = (struct drr_class *)arg;
+ 
+-	if (cl->qdisc->q.qlen == 0)
+-		list_del(&cl->alist);
++	list_del(&cl->alist);
+ }
+ 
+ static int drr_dump_class(struct Qdisc *sch, unsigned long arg,
+diff --git a/net/sched/sch_hfsc.c b/net/sched/sch_hfsc.c
+index 000f1d36128e..cbba3a8f5a82 100644
+--- a/net/sched/sch_hfsc.c
++++ b/net/sched/sch_hfsc.c
+@@ -1210,10 +1210,8 @@ hfsc_qlen_notify(struct Qdisc *sch, unsigned long arg)
+ {
+ 	struct hfsc_class *cl = (struct hfsc_class *)arg;
+ 
+-	if (cl->qdisc->q.qlen == 0) {
+-		update_vf(cl, 0, 0);
+-		set_passive(cl);
+-	}
++	update_vf(cl, 0, 0);
++	set_passive(cl);
+ }
+ 
+ static unsigned long
+diff --git a/net/sched/sch_htb.c b/net/sched/sch_htb.c
+index c798d0de8a9d..170327749af9 100644
+--- a/net/sched/sch_htb.c
++++ b/net/sched/sch_htb.c
+@@ -1178,8 +1178,7 @@ static void htb_qlen_notify(struct Qdisc *sch, unsigned long arg)
+ {
+ 	struct htb_class *cl = (struct htb_class *)arg;
+ 
+-	if (cl->un.leaf.q->q.qlen == 0)
+-		htb_deactivate(qdisc_priv(sch), cl);
++	htb_deactivate(qdisc_priv(sch), cl);
+ }
+ 
+ static unsigned long htb_get(struct Qdisc *sch, u32 classid)
+diff --git a/net/sched/sch_qfq.c b/net/sched/sch_qfq.c
+index ca0516e6f743..eec67fd16b85 100644
+--- a/net/sched/sch_qfq.c
++++ b/net/sched/sch_qfq.c
+@@ -1424,8 +1424,7 @@ static void qfq_qlen_notify(struct Qdisc *sch, unsigned long arg)
+ 	struct qfq_sched *q = qdisc_priv(sch);
+ 	struct qfq_class *cl = (struct qfq_class *)arg;
+ 
+-	if (cl->qdisc->q.qlen == 0)
+-		qfq_deactivate_class(q, cl);
++	qfq_deactivate_class(q, cl);
+ }
+ 
+ static int qfq_init_qdisc(struct Qdisc *sch, struct nlattr *opt)
+diff --git a/net/sched/sch_red.c b/net/sched/sch_red.c
+index 4610d44f58d3..6cce4f42ade6 100644
+--- a/net/sched/sch_red.c
++++ b/net/sched/sch_red.c
+@@ -19,6 +19,7 @@
+ #include <linux/kernel.h>
+ #include <linux/skbuff.h>
+ #include <net/pkt_sched.h>
++#include <net/pkt_cls.h>
+ #include <net/inet_ecn.h>
+ #include <net/red.h>
+ 
+@@ -147,11 +148,40 @@ static void red_reset(struct Qdisc *sch)
+ 	red_restart(&q->vars);
+ }
+ 
++static int red_offload(struct Qdisc *sch, bool enable)
++{
++	struct red_sched_data *q = qdisc_priv(sch);
++	struct net_device *dev = qdisc_dev(sch);
++	struct tc_red_qopt_offload opt = {
++		.handle = sch->handle,
++		.parent = sch->parent,
++	};
++	struct tc_to_netdev tc = {.type = TC_SETUP_QDISC_RED,
++				  { .sch_red = &opt } };
++
++	if (!dev->netdev_ops->ndo_setup_tc)
++		return -EOPNOTSUPP;
++
++	if (enable) {
++		opt.command = TC_RED_REPLACE;
++		opt.set.min = q->parms.qth_min >> q->parms.Wlog;
++		opt.set.max = q->parms.qth_max >> q->parms.Wlog;
++		opt.set.probability = q->parms.max_P;
++		opt.set.is_ecn = red_use_ecn(q);
++		opt.set.qstats = &sch->qstats;
++	} else {
++		opt.command = TC_RED_DESTROY;
++	}
++
++	return dev->netdev_ops->ndo_setup_tc(dev, sch->handle, 0, &tc);
++}
++
+ static void red_destroy(struct Qdisc *sch)
+ {
+ 	struct red_sched_data *q = qdisc_priv(sch);
+ 
+ 	del_timer_sync(&q->adapt_timer);
++	red_offload(sch, false);
+ 	qdisc_destroy(q->qdisc);
+ }
+ 
+@@ -218,6 +248,7 @@ static int red_change(struct Qdisc *sch, struct nlattr *opt)
+ 		red_start_of_idle_period(&q->vars);
+ 
+ 	sch_tree_unlock(sch);
++	red_offload(sch, true);
+ 	return 0;
+ }
+ 
+@@ -242,6 +273,38 @@ static int red_init(struct Qdisc *sch, struct nlattr *opt)
+ 	return red_change(sch, opt);
+ }
+ 
++static int red_dump_offload_stats(struct Qdisc *sch, struct tc_red_qopt *opt)
++{
++	struct net_device *dev = qdisc_dev(sch);
++	struct tc_red_qopt_offload hw_stats = {
++		.command = TC_RED_STATS,
++		.handle = sch->handle,
++		.parent = sch->parent,
++		{
++			.stats.bstats = &sch->bstats,
++			.stats.qstats = &sch->qstats,
++		},
++	};
++	struct tc_to_netdev tc = {.type = TC_SETUP_QDISC_RED,
++				  { .sch_red = &hw_stats } };
++	int err;
++
++	sch->flags &= ~TCQ_F_OFFLOADED;
++
++	if (!dev->netdev_ops->ndo_setup_tc)
++		return 0;
++
++	err = dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_RED, 0, &tc);
++
++	if (err == -EOPNOTSUPP)
++		return 0;
++
++	if (!err)
++		sch->flags |= TCQ_F_OFFLOADED;
++
++	return err;
++}
++
+ static int red_dump(struct Qdisc *sch, struct sk_buff *skb)
+ {
+ 	struct red_sched_data *q = qdisc_priv(sch);
+@@ -255,8 +318,12 @@ static int red_dump(struct Qdisc *sch, struct sk_buff *skb)
+ 		.Plog		= q->parms.Plog,
+ 		.Scell_log	= q->parms.Scell_log,
+ 	};
++	int err;
++
++	err = red_dump_offload_stats(sch, &opt);
++	if (err)
++		goto nla_put_failure;
+ 
+-	sch->qstats.backlog = q->qdisc->qstats.backlog;
+ 	opts = nla_nest_start(skb, TCA_OPTIONS);
+ 	if (opts == NULL)
+ 		goto nla_put_failure;
+@@ -273,12 +340,27 @@ static int red_dump(struct Qdisc *sch, struct sk_buff *skb)
+ static int red_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
+ {
+ 	struct red_sched_data *q = qdisc_priv(sch);
+-	struct tc_red_xstats st = {
+-		.early	= q->stats.prob_drop + q->stats.forced_drop,
+-		.pdrop	= q->stats.pdrop,
+-		.other	= q->stats.other,
+-		.marked	= q->stats.prob_mark + q->stats.forced_mark,
+-	};
++	struct net_device *dev = qdisc_dev(sch);
++	struct tc_red_xstats st = {0};
++
++	if (sch->flags & TCQ_F_OFFLOADED) {
++		struct tc_red_qopt_offload hw_stats_request = {
++			.command = TC_RED_XSTATS,
++			.handle = sch->handle,
++			.parent = sch->parent,
++			{
++				.xstats = &q->stats,
++			},
++		};
++		struct tc_to_netdev tc = {.type = TC_SETUP_QDISC_RED,
++				  { .sch_red = &hw_stats_request } };
++
++		dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_RED, 0, &tc);
++	}
++	st.early = q->stats.prob_drop + q->stats.forced_drop;
++	st.pdrop = q->stats.pdrop;
++	st.other = q->stats.other;
++	st.marked = q->stats.prob_mark + q->stats.forced_mark;
+ 
+ 	return gnet_stats_copy_app(d, &st, sizeof(st));
+ }

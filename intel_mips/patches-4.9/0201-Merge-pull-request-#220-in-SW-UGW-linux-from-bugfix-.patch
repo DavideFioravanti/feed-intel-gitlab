@@ -1,0 +1,29 @@
+From 2487cb8d87db6180f68687a22447a6894ee809b8 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 15 Oct 2018 16:02:57 +0200
+Subject: [PATCH] Merge pull request #220 in SW_UGW/linux from
+ bugfix/PMCPESYS-95-ugw8-cpufreq_conservative-governor-down-scaling-issue to
+ master
+
+* commit '16b204bda56c19574a31a1cdc6d7b16fcfcb13a7':
+  cpufreq: conservative: Fix requested_freq handling
+---
+ drivers/cpufreq/cpufreq_conservative.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/cpufreq/cpufreq_conservative.c b/drivers/cpufreq/cpufreq_conservative.c
+index 00a74351f623..1f661c857aec 100644
+--- a/drivers/cpufreq/cpufreq_conservative.c
++++ b/drivers/cpufreq/cpufreq_conservative.c
+@@ -79,8 +79,10 @@ static unsigned int cs_dbs_timer(struct cpufreq_policy *policy)
+ 	 * changed in the meantime, so fall back to current frequency in that
+ 	 * case.
+ 	 */
+-	if (requested_freq > policy->max || requested_freq < policy->min)
++	if (requested_freq > policy->max || requested_freq < policy->min) {
+ 		requested_freq = policy->cur;
++		dbs_info->requested_freq = requested_freq;
++	}
+ 
+ 	/* Check for frequency increase */
+ 	if (load > dbs_data->up_threshold) {

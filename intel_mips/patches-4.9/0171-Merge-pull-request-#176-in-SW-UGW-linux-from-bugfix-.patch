@@ -1,0 +1,25 @@
+From ff01077df358212da0a1cb21de3b2894c93b9a9c Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Mon, 10 Sep 2018 13:09:42 +0200
+Subject: [PATCH] Merge pull request #176 in SW_UGW/linux from
+ bugfix/UGW_SW-30279-remove-cbm-padding-for-grx500 to master
+
+* commit 'f7a36e40adc8321ae2decfef5905a18d7b6db956':
+  UGW_SW-30279 remove padding in cbm driver
+---
+ drivers/net/ethernet/lantiq/cqm/grx500/cbm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c b/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
+index 0c61caa0bec7..d25368e0e076 100644
+--- a/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
++++ b/drivers/net/ethernet/lantiq/cqm/grx500/cbm.c
+@@ -1785,7 +1785,7 @@ cbm_cpu_pkt_tx_grx500(
+ 		skb->head = NULL;
+ 	}
+ 	if (setup_desc((struct cbm_desc *)&desc, tmp_data_ptr,
+-		       (skb->len < (ETH_ZLEN + 8)) ? (ETH_ZLEN + 8) : skb->len,
++		       skb->len,
+ 		       skb->DW1, skb->DW0)){
+ 		pr_err("cbm setup desc failed..\n");
+ 		dev_kfree_skb_any(skb);

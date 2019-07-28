@@ -1,0 +1,374 @@
+From 50af1315db0b8dee4b7dfb4527b4fa2daec2f7db Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 28 Aug 2018 07:43:25 +0200
+Subject: [PATCH] Merge pull request #119 in SW_UGW/linux from
+ bugfix/DRVLIB_SW-778-ptp_fixes_after_testing to master
+
+* commit '8ad2434c091e494afe9fdfb1c67be3a578e9a02b':
+  Tx Direction, CRC and PAD disabled for PON Interface
+  Fix for Padding need to be disabled for PON Interface
+  Removing unwanted debug print
+  Fcs Generation and Pad Insertion code corrected
+  Using be64_to_cpu for conversion
+  Update the code for Timestamp recieve part for PTP
+  Fixes after testing External timestamp and frequeny adjustment with Paragon
+  Bug Fix for Rx timestamp 4 bytes getting stripped by HW
+  Fix for Xgmac Interrupt not getting enabled back for some unhandled events
+---
+ .../lantiq/datapath/gswip31/datapath_misc.c        |  4 +-
+ .../net/ethernet/lantiq/switch-api/gsw_defconf.c   | 12 ++--
+ .../net/ethernet/lantiq/switch-api/gsw_flow_core.c |  7 ++-
+ .../ethernet/lantiq/switch-api/mac/gswss_mac_api.h |  1 +
+ .../net/ethernet/lantiq/switch-api/mac/mac_cfg.c   | 18 +++---
+ .../net/ethernet/lantiq/switch-api/mac/mac_drv.c   |  5 +-
+ .../net/ethernet/lantiq/switch-api/mac/xgmac_ptp.c | 65 ++++++++++------------
+ include/net/switch_api/lantiq_gsw.h                | 13 +++++
+ 8 files changed, 68 insertions(+), 57 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+index ac34148a5285..e3817399f36b 100644
+--- a/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
++++ b/drivers/net/ethernet/lantiq/datapath/gswip31/datapath_misc.c
+@@ -800,9 +800,9 @@ static int pon_config(int inst, int ep, struct dp_port_data *data, u32 flags)
+ 	/* Disable Rx CRC check. Value '0'-enable, '1'-disable */
+ 	mac_ops->set_rx_crccheck(mac_ops, DP_GSWIP_CRC_DISABLE);
+ 
+-	/* TX FCS generation disable. Value '1'-enable, '0'-disable */
++	/* TX FCS generation disable, Padding Insertion disable. */
+ 	if (data->flag_ops & DP_F_DATA_FCS_DISABLE)
+-		mac_ops->set_fcsgen(mac_ops, DP_GSWIP_FCS_DISABLE);
++		mac_ops->set_fcsgen(mac_ops, GSW_CRC_PAD_INS_DIS);
+ 
+ 	/* Disables RX/TX Flow control */
+ 	mac_ops->set_flow_ctl(mac_ops, DP_GSWIP_FLOW_CTL_DISABLE);
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
+index b3bb09e6a7ea..2cac03bf439d 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_defconf.c
+@@ -441,6 +441,7 @@ static int pmac_eg_cfg(struct core_ops *ops, u8 pmacid, u8 dpu)
+ 					eg_cfg.bMpe2Flag	= ((j & 3) >> 1);
+ 					eg_cfg.bMpe1Flag	= (j & 1);
+ 					eg_cfg.nFlowIDMsb	= k;
++					eg_cfg.bFcsEna		= 1;
+ 
+ 					/* All other fields set to 0. */
+ 					ops->gsw_pmac_ops.Pmac_Eg_CfgSet(ops,
+@@ -471,10 +472,10 @@ int pmac_get_eg_cfg(struct core_ops *ops, u8 pmacid, u8 dst_port)
+ 	printk("\nGSWIP PMAC EG CFG\n");
+ 
+ 	printk("\n\nDestination portId = %d\n\n", dst_port);
+-	printk("%10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
++	printk("%10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+ 	       "PmacId", "RxDmaChId", "BslTrafCls", "BslSegDis",
+ 	       "PmacEna", "RedirEna", "DestPortId", "TrafCls", "Mpe1",
+-	       "Mpe2", "FlowId");
++	       "Mpe2", "FlowId", "FcsEn");
+ 
+ 	for (k = 0; k <= 3; k++) {
+ 		for (i = 0; i <= 3; i++) {
+@@ -494,7 +495,7 @@ int pmac_get_eg_cfg(struct core_ops *ops, u8 pmacid, u8 dst_port)
+ 
+ 				ops->gsw_pmac_ops.Pmac_Eg_CfgGet(ops,
+ 								 &eg_cfg);
+-				printk("%10d %10d %10d %10d %10d %10d %10d %10d %10d %10d %10d",
++				printk("%10d %10d %10d %10d %10d %10d %10d %10d %10d %10d %10d %10d",
+ 				       eg_cfg.nPmacId,
+ 				       eg_cfg.nRxDmaChanId,
+ 				       eg_cfg.nBslTrafficClass,
+@@ -505,7 +506,8 @@ int pmac_get_eg_cfg(struct core_ops *ops, u8 pmacid, u8 dst_port)
+ 				       eg_cfg.nTrafficClass,
+ 				       eg_cfg.bMpe1Flag,
+ 				       eg_cfg.bMpe2Flag,
+-				       eg_cfg.nFlowIDMsb);
++				       eg_cfg.nFlowIDMsb,
++				       eg_cfg.bFcsEna);
+ 				printk("\n");
+ 			}
+ 		}
+@@ -525,7 +527,7 @@ static int pmac_glbl_cfg(struct core_ops *ops, u8 pmacid)
+ 	glbl_cfg.nPmacId = pmacid;
+ 	glbl_cfg.bJumboEna = 1;
+ 	glbl_cfg.nMaxJumboLen = 10000;
+-	glbl_cfg.bTxFCSDis = 1;
++	glbl_cfg.bTxFCSDis = 0;
+ 	glbl_cfg.bRxFCSDis = 1;
+ 	glbl_cfg.eShortFrmChkType = GSW_PMAC_SHORT_LEN_ENA_UNTAG;
+ 	glbl_cfg.bLongFrmChkDis = 1;
+diff --git a/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c b/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
+index 210a0fdcaf48..e5908fe75583 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
++++ b/drivers/net/ethernet/lantiq/switch-api/gsw_flow_core.c
+@@ -17135,7 +17135,7 @@ GSW_return_t GSW_CPU_PortCfgGet(void *cdev, GSW_CPU_PortCfg_t *parm)
+ 					goto UNLOCK_AND_RETURN;
+ 				}
+ 
+-				parm->bFcsGenerate = ops->get_fcsgen(ops);
++				parm->bFcsTxOps = ops->get_fcsgen(ops);
+ #endif
+ 			}
+ 		}
+@@ -17183,6 +17183,7 @@ GSW_return_t GSW_CPU_PortCfgSet(void *cdev, GSW_CPU_PortCfg_t *parm)
+ 	u32 RST, AS, AST, RXSH;
+ 	u32 ret;
+ 
++
+ 	if (gswdev == NULL) {
+ 		pr_err("%s:%s:%d", __FILE__, __func__, __LINE__);
+ 		return GSW_statusErr;
+@@ -17267,8 +17268,8 @@ GSW_return_t GSW_CPU_PortCfgSet(void *cdev, GSW_CPU_PortCfg_t *parm)
+ 					ret = GSW_statusErr;
+ 					goto UNLOCK_AND_RETURN;
+ 				}
+-
+-				ops->set_fcsgen(ops, 1);
++				
++				ops->set_fcsgen(ops, parm->bFcsTxOps);
+ #endif
+ 			}
+ 		}
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/gswss_mac_api.h b/drivers/net/ethernet/lantiq/switch-api/mac/gswss_mac_api.h
+index 1d2ffdfaf0a8..c97b5c2e9f82 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/gswss_mac_api.h
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/gswss_mac_api.h
+@@ -255,6 +255,7 @@ int gswss_adap_reset(void *pdev, u32 reset);
+ int gswss_set_xgmac_tx_disable(void *pdev, u32 val);
+ int gswss_set_xgmac_rx_disable(void *pdev, u32 val);
+ int gswss_set_xgmac_crc_ctrl(void *pdev, u32 val);
++int gswss_get_xgmac_crc_ctrl(void *pdev);
+ 
+ int gswss_get_mtu(void *pdev);
+ u32 gswss_get_flowctrl_tx(void *pdev);
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
+index 3271ac90a5cd..9ea163fe7570 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/mac_cfg.c
+@@ -723,14 +723,12 @@ int mac_set_fcs_gen(void *pdev, u32 val)
+ 	spin_lock_bh(&pdata->mac_lock);
+ #endif
+ 
+-	/* CRC Insertion enable, PAD insertion Disable */
+-	if (val == 1)
+-		gswss_set_xgmac_crc_ctrl(pdev, 1);
+-	else
+-		/* CRC and PAD Insertion Disable */
+-		gswss_set_xgmac_crc_ctrl(pdev, 2);
++	gswss_set_xgmac_crc_ctrl(pdev, val);
+ 
+-	lmac_set_txfcs(pdev, val);
++	if ((val == GSW_CRC_PAD_INS_EN) || (val == GSW_CRC_EN_PAD_DIS))
++		lmac_set_txfcs(pdev, 1);
++	else
++		lmac_set_txfcs(pdev, 0);
+ 
+ #ifdef __KERNEL__
+ 	spin_unlock_bh(&pdata->mac_lock);
+@@ -748,7 +746,7 @@ int mac_get_fcs_gen(void *pdev)
+ 	spin_lock_bh(&pdata->mac_lock);
+ #endif
+ 
+-	tx_fcs = lmac_get_txfcs(pdev);
++	tx_fcs = gswss_get_xgmac_crc_ctrl(pdev);
+ 
+ #ifdef __KERNEL__
+ 	spin_unlock_bh(&pdata->mac_lock);
+@@ -805,6 +803,7 @@ int mac_enable_ts(void *pdev)
+ 	gswss_set_mac_txsptag_op(pdev, MODE3);
+ 
+ 	mac_int_enable(pdev);
++
+ 	xgmac_set_mac_int(pdev, XGMAC_TSTAMP_EVNT, 1);
+ 
+ #ifdef __KERNEL__
+@@ -1035,6 +1034,9 @@ int mac_init(void *pdev)
+ 	 */
+ 	gswss_set_eee_cap(pdev, EEE_CAP_OFF);
+ 
++	/* Tell adaption layer to remove FCS in Rx Direction */
++	gswss_set_mac_rxfcs_op(pdev, MODE3);
++
+ 	/* Set XGMAC Port to MDIO Clause 22 */
+ 	mdio_set_clause(pdev, 1, pdata->mac_idx);
+ 
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c b/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c
+index 03853d22b743..dcee5bab33bf 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/mac_drv.c
+@@ -89,10 +89,9 @@ static void mac_irq_tasklet(unsigned long data)
+ 				}
+ 			}
+ 		}
+-
+-		/* Enable Corresponding XGMAC and LMAC Interrupts back */
+-		ops->mac_int_en(ops);
+ 	}
++	/* Enable Corresponding XGMAC and LMAC Interrupts back */
++	ops->mac_int_en(ops);
+ }
+ 
+ static int mac_irq_init(struct mac_prv_data *pdata)
+diff --git a/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_ptp.c b/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_ptp.c
+index 29b891a574a0..af92101e3d9f 100644
+--- a/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_ptp.c
++++ b/drivers/net/ethernet/lantiq/switch-api/mac/xgmac_ptp.c
+@@ -96,21 +96,15 @@ static int xgmac_adj_freq(struct ptp_clock_info *ptp, s32 ppb)
+ 	struct mac_ops *hw_if = &pdata->ops;
+ 	u64 adj, diff;
+ 	u32 addend;
+-	int neg_adj = 0;
+ 
+ 	pr_debug("Calling adjust_freq: %d\n", ppb);
+ 
+-	if (ppb < 0) {
+-		neg_adj = 1;
+-		ppb = -ppb;
+-	}
+-
+ 	/* Frequency adjustment is feq_delta = ppb / 1.000.000.000
+ 	 * addend = def_addend / ( 1 - ppb/1.000.000.000)
+ 	 * So addend in integer arithmetic becomes
+ 	 * addend = (def_addend * 1.000.000.000) / (1.000.000.000 - ppb)
+ 	 */
+-	adj = (pdata->def_addend * NSEC_TO_SEC);
++	adj = ((u64)pdata->def_addend * NSEC_TO_SEC);
+ 	diff = (NSEC_TO_SEC - ppb);
+ 
+ 	addend = div_u64(adj, diff);
+@@ -464,9 +458,9 @@ int xgmac_rx_hwts(void *pdev, struct sk_buff *skb)
+ static void xgmac_get_rx_tstamp(struct mac_prv_data *pdata,
+ 				struct sk_buff *skb)
+ {
+-	__le64 regval;
+-	__le64 tmpregval[2];
++	__be64 regval;
+ 	u32 ts_hdr_len = 8;
++	u32 copy_hdr_len = 8;
+ 	struct skb_shared_hwtstamps *shhwtstamp = NULL;
+ 	u64 ns;
+ 
+@@ -475,27 +469,32 @@ static void xgmac_get_rx_tstamp(struct mac_prv_data *pdata,
+ 	 * (8 bytes tstamp + 2 bytes Year)
+ 	 * Get the register setting for clk src
+ 	 */
+-	if (pdata->hw_feat.ts_src == 2)
++	if (pdata->hw_feat.ts_src == 2) {
+ 		ts_hdr_len = 8;
+-	else if (pdata->hw_feat.ts_src == 1 || pdata->hw_feat.ts_src == 3)
++		copy_hdr_len = 8;
++	} else if (pdata->hw_feat.ts_src == 1 || pdata->hw_feat.ts_src == 3) {
++		/* Since 2 bytes is fixed as 0, copy only 8 bytes */
++		copy_hdr_len = 8;
++		/* Skb timestamp stripping should be still 10 bytes */
+ 		ts_hdr_len = 10;
++	}
+ 
+ 	/* copy the bits out of the skb, and then trim the skb length */
+-	skb_copy_bits(skb, skb->len - ts_hdr_len, tmpregval, ts_hdr_len);
++	skb_copy_bits(skb, skb->len - copy_hdr_len, &regval, copy_hdr_len);
+ 	__pskb_trim(skb, skb->len - ts_hdr_len);
+ 
+-	/* GSWIP HW attach upper 2 bytes with 0 for timestamp */
+-	regval = (0xffffffff00000000 & tmpregval[0]) |
+-		 (tmpregval[0] & 0xffff) << 16
+-		 | (tmpregval[1] & 0xffff000000000000) >> 48;
+ 
+-	/* The timestamp is recorded in little endian format, and is stored at
+-	 * the end of the packet.
++	/* The timestamp is recorded in below order from HW,
++	 * and is stored at the end of the packet.
+ 	 *
+-	 * DWORD: N              N + 1      N + 2
+-	 * Field: End of Packet  SYSTIMH    SYSTIML
++	 * DWORD: Year(2 byte)  Sec(4 Byte)	Nsec(4 Byte)
++	 * Field: 00  		SYSTIMH    	SYSTIML
+ 	 */
+-	ns = le64_to_cpu(regval);
++
++	regval = be64_to_cpu(regval);
++
++	ns = ((((regval & 0xffffffff00000000) >> 32) * NSEC_TO_SEC) +
++	      (regval & 0x00000000ffffffff));
+ 
+ 	shhwtstamp = skb_hwtstamps(skb);
+ 	memset(shhwtstamp, 0, sizeof(struct skb_shared_hwtstamps));
+@@ -609,9 +608,12 @@ static u64 xgmac_get_auxtimestamp(struct mac_prv_data *pdata)
+ {
+ 	u64 nsec;
+ 
+-	nsec = XGMAC_RGRD(pdata, MAC_AUX_SEC);
+-	nsec *= NSEC_TO_SEC;
+-	nsec += XGMAC_RGRD(pdata, MAC_AUX_NSEC);
++	/* First read nanoseconds and then seconds.
++	 * On reading seconds register the FIFO top
++	 * entry gets removed.
++	 */
++	nsec = XGMAC_RGRD(pdata, MAC_AUX_NSEC);
++	nsec += (u64)XGMAC_RGRD(pdata, MAC_AUX_SEC) * NSEC_TO_SEC;
+ 
+ 	return nsec;
+ }
+@@ -623,17 +625,14 @@ static void xgmac_extts_isr_handler(struct mac_prv_data *pdata,
+ #ifdef CONFIG_PTP_1588_CLOCK
+ 	struct ptp_clock_event event;
+ 
++	if (val)
++		event.timestamp = xgmac_get_auxtimestamp(pdata);
++
+ 	if (val & AUX_TRIG_0) {
+ 		if (pdata->exts0_enabled) {
+ 			event.type = PTP_CLOCK_EXTTS;
+ 			event.index = 0;
+-			event.timestamp = xgmac_get_auxtimestamp(pdata);
+ 			ptp_clock_event(pdata->ptp_clock, &event);
+-		} else {
+-			/* Make sure timestamp fifo is cleared
+-			 * if any event happens after the testptp is exited
+-			 */
+-			xgmac_get_auxtimestamp(pdata);
+ 		}
+ 	}
+ 
+@@ -641,13 +640,7 @@ static void xgmac_extts_isr_handler(struct mac_prv_data *pdata,
+ 		if (pdata->exts1_enabled) {
+ 			event.type = PTP_CLOCK_EXTTS;
+ 			event.index = 1;
+-			event.timestamp = xgmac_get_auxtimestamp(pdata);
+ 			ptp_clock_event(pdata->ptp_clock, &event);
+-		} else {
+-			/* Make sure timestamp fifo is cleared
+-			 * if any event happens after the testptp is exited
+-			 */
+-			xgmac_get_auxtimestamp(pdata);
+ 		}
+ 	}
+ 
+diff --git a/include/net/switch_api/lantiq_gsw.h b/include/net/switch_api/lantiq_gsw.h
+index c3975728b0c0..7c95549d36da 100644
+--- a/include/net/switch_api/lantiq_gsw.h
++++ b/include/net/switch_api/lantiq_gsw.h
+@@ -2099,6 +2099,17 @@ typedef enum {
+ 	GSW_CPU_PARSER_RESERVED = 3
+ } GSW_CPU_ParserHeaderCfg_t;
+ 
++/** \brief FCS and Pad Insertion operations for GSWIP 3.1
++    Used by \ref GSW_CPU_PortCfgSet/Get. */
++typedef enum {
++	/** CRC Pad Insertion Enable */
++	GSW_CRC_PAD_INS_EN	= 0,
++	/** CRC Insertion Enable Pad Insertion Disable */
++	GSW_CRC_EN_PAD_DIS	= 1,
++	/** CRC Pad Insertion Disable */
++	GSW_CRC_PAD_INS_DIS	= 2
++} GSW_FCS_TxOps_t;
++
+ /** \brief Defines one port that is directly connected to the CPU and its applicable settings.
+     Used by \ref GSW_CPU_PORT_CFG_SET and \ref GSW_CPU_PORT_CFG_GET. */
+ typedef struct {
+@@ -2136,6 +2147,8 @@ typedef struct {
+ 	GSW_CPU_ParserHeaderCfg_t  eMPE2ParserCfg;
+ 	/** GSWIP-3.0 specific Parser Header Config for both MPE-1 and MPE-2 set flag (i.e. MPE1=1, MPE2=1). */
+ 	GSW_CPU_ParserHeaderCfg_t  eMPE1MPE2ParserCfg;
++	/** GSWIP-3.1 FCS tx Operations. */
++	GSW_FCS_TxOps_t bFcsTxOps;
+ } GSW_CPU_PortCfg_t;
+ 
+ /** \brief Ethernet layer-2 header selector, when adding or removing on

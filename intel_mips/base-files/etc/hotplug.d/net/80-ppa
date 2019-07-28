@@ -1,0 +1,77 @@
+#!/bin/sh
+
+# init PPA if not yet done since boot
+ppa_init()
+{
+	if [ -e /tmp/ppa_init_done ]; then
+		# don't break the internets 
+		return
+	fi
+
+	# sometimes first call to hotplug happens
+	# before modules are done loading.. hang
+	# around and wait for PPA char dev for up
+	# to 10sec.. this is a HACK and should be
+	# removed; need a better entity to manage
+	# interaces in PPA
+	loop=1
+	while [ $loop -le 10 ]; do
+		if [ -e /dev/ifx_ppa ]; then
+			break
+		fi 
+
+		echo "hotplug: ppa waiting for character device while adding DEV=$DEV loop=$loop" > /dev/kmsg
+		sleep 1
+
+		let loop=loop+1
+	done
+		
+	if [ $loop -ge 10 ]; then
+		echo "hotplug: ppa character device never showed up, bailing!!" > /dev/kmsg
+
+		# char dev never showed up; don't try to init
+		exit 0
+	fi
+
+	echo "hotplug: ppa running init" > /dev/kmsg
+
+	touch /tmp/ppa_init_done
+	ppacmd init
+}
+
+# add interface to PPA if not already present
+ppa_add_if()
+{
+	DEV="$1"
+	TYPE="$2"
+
+	echo "hotplug: ppa ACTION=add for DEVICENAME=$DEVICENAME" > /dev/kmsg
+
+	# ensure PPA is initialized
+	ppa_init
+
+	# check LAN
+	present=$(ppacmd getlan | grep $DEV)
+	if [ -z "$present" ]; then
+		# check WAN
+		present=$(ppacmd getwan | grep $DEV)
+	fi
+
+	# if not found, add it
+	if [ -z "$present" ]; then
+		echo "hotplug: ppa adding device $DEV type $TYPE" > /dev/kmsg
+		ppacmd add${TYPE} -i $DEV
+	fi
+}
+
+# do something only on interface add 
+if [ "$ACTION" = add ]; then
+	# check for exact interface names as PPA
+	# automatically adds sub-interfaces
+	case $DEVICENAME in
+		eth1) ppa_add_if $DEVICENAME "wan" ;;
+		eth0_1|eth0_2|eth0_3|eth0_4) ppa_add_if $DEVICENAME "lan" ;;
+		ptm0) ppa_add_if $DEVICENAME "wan" ;;
+		wlan0|wlan2) ppa_add_if $DEVICENAME "lan" ;;
+	esac
+fi 

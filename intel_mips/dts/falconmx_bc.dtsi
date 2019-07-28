@@ -1,0 +1,305 @@
+
+/******************************************************************************
+ ** Board configuration: Enable dect SS.
+ ******************************************************************************/
+/ {
+dect {
+	compatible = "lantiq,ltqdect";
+	lantiq,dect-spi-int=<302>; /*271 GPIO base + GPIO 31 for cosic interrupt and driver Probe fn will look for string dect-spi-int */
+	lantiq,dect-cs= <0>; /*DECT chip select port Number; This is used by SSC interface*/
+	gpio-reset = <&gpio0 28 0>;
+	status = "ok";
+	};
+
+dect-page {
+	compatible = "lantiq,ltqdect-page";
+	lantiq,pagebit= <1>; /*DECT Page Bit: Bit info meant for DECT*/
+	lantiq,pagepin= <&gpio0 29 0>;
+	status = "ok";
+	};
+};
+
+/******************************************************************************
+ ** Board configuration: Enable spi0 configuration.
+ ******************************************************************************/
+
+/******************************************************************************
+ ** Board configuration: Enable PCIe board configuration.
+ ** PCIE sub-system feature configuration, the pcie0/1/2 are defined in Soc level
+ ******************************************************************************/
+&pcie0 {
+	status = "disabled";
+	lantiq,rst-high-active = <0>; /* 0 - low activ, 1 -- high active */
+	lantiq,rst-interval = <200>; /* in mili-seconds, up to 500 ms*/
+	lantiq,inbound-swap = <1>; /* 0 -- no swap, 1 -- swap */
+	lantiq,outbound-swap = <0>; /* 0 -- no swap, 1 -- swap */
+	lantiq,phy-mode = <0>; /* 0 -36Mhz, 1 - 36MHzSSC, 2 - 25Mhz, 3 - 25MHzSSC, 4 - 100MHz, 5 - 100MHz SSC */
+	reset-gpio = <&gpio0 21 0>; /* default value , it can be updated on board. */
+	lantiq,cphy-mode = <0>; /* 0, 1, 4, 5 */
+};
+
+&pcie1 {
+	status = "disabled";
+	lantiq,rst-high-active = <0>; /* 0 - low activ, 1 -- high active */
+	lantiq,rst-interval = <200>; /* in mili-seconds, up to 500 ms*/
+	lantiq,inbound-swap = <1>; /* 0 -- no swap, 1 -- swap */
+	lantiq,outbound-swap = <0>; /* 0 -- no swap, 1 -- swap */
+	lantiq,phy-mode = <0>; /* 0 -36Mhz, 1 - 36MHzSSC, 2 - 25Mhz, 3 - 25MHzSSC, 4 - 100MHz, 5 - 100MHz SSC */
+	reset-gpio = <&gpio0 22 0>; /* default value , it can be updated on board. */
+	lantiq,cphy-mode = <0>;
+};
+
+/******************************************************************************
+ ** Board configuration: Enable Shift register LED board configuration.
+ ** Based on GRX500 Emulation Board.
+ ******************************************************************************/
+&sso {
+	status = "okay";
+	/* lantiq,rising; */
+	#address-cells = <1>;
+	#size-cells = <0>;
+	lantiq,groups = <0xf>;
+
+	/* led33-29 used by gphy */
+	lantiq,phy2 = <0x1>;
+	lantiq,phy3 = <0x1>;
+	lantiq,phy4 = <0x1>;
+	lantiq,phy5 = <0x1>;
+	lantiq,phy6 = <0x1>;
+
+	/* led28-14 (single color) */
+	led28 {
+		label = "led28";
+		reg = <0x5>;
+	};
+	led27 {
+		label = "led27";
+		reg = <0x6>;
+	};
+	led26 {
+		label = "led26";
+		reg = <0x7>;
+	};
+	led25 {
+		label = "led25";
+		reg = <0x8>;
+	};
+	led24 {
+		label = "led24";
+		reg = <0x9>;
+	};
+	led23 {
+		label = "led23";
+		reg = <0xa>;
+	};
+	led22 {
+		label = "led22";
+		reg = <0xb>;
+	};
+	led21 {
+		label = "led21";
+		reg = <0xc>;
+	};
+	led20 {
+		label = "led20";
+		reg = <0xd>;
+	};
+	led19 {
+		label = "led19";
+		reg = <0xe>;
+	};
+	led18 {
+		label = "led18";
+		reg = <0xf>;
+	};
+	led17 {
+		label = "led17";
+		reg = <0x10>;
+	};
+	led16 {
+		label = "led16";
+		reg = <0x11>;
+	};
+	led15 {
+		label = "led15";
+		reg = <0x12>;
+	};
+	led14 {
+		label = "led14";
+		reg = <0x13>;
+	};
+
+	/* led5-2 (multicolor) */
+	led5_r {
+		label = "led5_r";
+		reg = <0x14>;
+	};
+	led5_g {
+		label = "led5_g";
+		reg = <0x15>;
+	};
+	led5_b {
+		label = "led5_b";
+		reg = <0x16>;
+	};
+	led4_r {
+		label = "led4_r";
+		reg = <0x17>;
+	};
+	led4_g {
+		label = "led4_g";
+		reg = <0x18>;
+	};
+	led4_b {
+		label = "led4_b";
+		reg = <0x19>;
+	};
+	led3_r {
+		label = "led3_r";
+		reg = <0x1a>;
+	};
+	led3_g {
+		label = "led3_g";
+		reg = <0x1b>;
+	};
+	led3_b {
+		label = "led3_b";
+		reg = <0x1c>;
+	};
+	led2_r {
+		label = "led2_r";
+		reg = <0x1d>;
+	};
+	led2_g {
+		label = "led2_g";
+		reg = <0x1e>;
+	};
+	led2_b {
+		label = "led2_b";
+		reg = <0x1f>;
+	};
+};
+
+/******************************************************************************
+ ** Board configuration: Enable CoC power management board feature
+ ******************************************************************************/
+&i2c0 {
+	status = "ok";
+	ina219: ina219@40 {
+		compatible = "ti,ina219";
+		reg = <0x40>;
+		shunt-resistor = <10000>;
+		rail-name = "PWR_12V";
+		};
+
+	dcdc:tps65273@62 {
+		status = "ok";
+		compatible = "ti,tps65273";
+		reg = <0x62>;
+
+		regulators {
+			dcdc2 {
+				regulator-name = "1V15VDD";
+				regulator-always-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <1200000>;
+				vout-slew-rate = <0>;
+				vout-psm-mode  = <0>;
+				vout-irdrop-offset  = <10000>;
+			};
+		};
+/*
+		vout1_status = <1>;
+		vout2_status = <1>;
+		vout1_slew_rate = <0>;
+		vout2_slew_rate = <0>;
+		vout1_psm_mode = <0>;
+		vout2_psm_mode = <0>;
+*/
+	};
+};
+
+/******************************************************************************
+ ** Board configuration: Enable SSC1 to support standard SPI devices (SPI Flash)
+ ******************************************************************************/
+/*
+&ssc1 {
+		status="ok";
+		mt29f@0 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0 1>;
+				compatible = "spinand,mt29f";
+				linux,modalias = "mt29f";
+				spi-max-frequency = <1000000>;
+
+				partition@0 {
+					label = "uboot";
+					reg = <0x000000 0x100000>;
+				};
+
+				partition@100000 {
+					label = "data";
+					reg = <0x100000 0x1000000>;
+				};
+
+				partition@1100000 {
+					label = "res";
+					reg = <0x1100000 0x6E00000>;
+				};
+			};
+};
+*/
+/******************************************************************************
+ ** Board configuration: Configure LAN/WAN interfaces
+ ******************************************************************************/
+&eth {
+	status = "ok";
+
+	lan0: interface@0 {
+		compatible = "lantiq,xrx500-pdi";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <1>;
+		intel,dp-dev-port = <3>;
+		intel,dp-port-id = <3>;
+
+		ethernet@1 {
+			compatible = "lantiq,xrx500-pdi-port";
+			reg = <1>;
+			phy-mode = "rgmii";
+		};
+	};
+
+	lan1: interface@1 {
+		compatible = "lantiq,xrx500-pdi";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <1>;
+		intel,dp-dev-port = <4>;
+		intel,dp-port-id = <4>;
+
+		ethernet@1 {
+			compatible = "lantiq,xrx500-pdi-port";
+			reg = <2>;
+			phy-mode = "rgmii";
+		};
+	};
+
+	wan: interface@5 {
+		compatible = "lantiq,xrx500-pdi";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <5>;
+		lantiq,wan = <1>;
+		intel,dp-dev-port = <2>;
+		intel,dp-port-id = <2>;
+
+		ethernet@5 {
+			compatible = "lantiq,xrx500-pdi-port";
+			reg = <1>;
+			phy-mode = "rgmii";
+		};
+	};
+};
+

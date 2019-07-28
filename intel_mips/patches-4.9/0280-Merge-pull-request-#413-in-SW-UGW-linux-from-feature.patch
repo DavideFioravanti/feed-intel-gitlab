@@ -1,0 +1,64 @@
+From 0a3c6cc43ce07911fce9fa4fc0d546af7d0ebd32 Mon Sep 17 00:00:00 2001
+From: CI Assistant <yossi.ilkanaev@intel.com>
+Date: Tue, 22 Jan 2019 13:42:10 +0100
+Subject: [PATCH] Merge pull request #413 in SW_UGW/linux from
+ feature/PONRTSYS-3017-update-dts-for-sfp_i2c-and-mdio-for-specific-boards to
+ master
+
+* commit '42002a727410325d39c80615443fff0c33b424ac':
+  Silent warning if phy has no irq
+  PONRTSYS-3017: Fix usage of serdes ethtool ops
+---
+ drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+index 37a25c964c13..8f406d83d089 100644
+--- a/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
++++ b/drivers/net/ethernet/lantiq/ltq_eth_drv_xrx500.c
+@@ -778,11 +778,11 @@ static int ltq_eth_init(struct net_device *dev)
+ 			pr_warn("connect phy of port %d failed\n",
+ 				priv->port[i].num);
+ 
+-		dev->ethtool_ops = &ethtool_ops;
+-	}
+-
+-	if (!priv->port[i].phy_node) {
+-		dev->ethtool_ops = &serdes_ethtool_ops;
++		if (priv->port[i].phy_node)
++			dev->ethtool_ops = &ethtool_ops;
++		else if (IS_ENABLED(CONFIG_INTEL_XPCS))
++			/* without xpcs node the num_port would be 0 */
++			dev->ethtool_ops = &serdes_ethtool_ops;
+ 	}
+ 
+ 	if (priv->lct_en == 1) {
+@@ -1510,6 +1510,9 @@ xrx500_of_port(struct net_device *dev, struct device_node *port)
+ 				pr_err("can not get phy dev for fixed link\n");
+ 			p->phydev = phy;
+ 			netif_carrier_on(dev);
++		} else if (priv->xpcs_node) {
++			pr_debug("no PHY but connected to xpcs: %s\n",
++				of_node_full_name(priv->xpcs_node));
+ 		} else {
+ 			pr_info("no interface attached to this interface!\n");
+ 			return;
+@@ -1524,7 +1527,7 @@ xrx500_of_port(struct net_device *dev, struct device_node *port)
+ 		if (of_irq_to_resource_table(port, &irqres, 1) == 1)
+ 			p->irq_num = irqres.start;
+ 		else
+-			pr_info("couldn't get irq number for gphy !!\n");
++			pr_debug("couldn't get irq number for gphy !!\n");
+ 	}
+ 
+ 	p->num = *id;
+@@ -2040,6 +2043,9 @@ static int prx300_phy_connect(struct net_device *dev, struct xrx500_port *port)
+ 	struct ltq_eth_priv *priv = NULL;
+ 	struct mac_ops *ops;
+ 
++	if (!port->phy_node)
++		return 0;
++
+ 	priv = netdev_priv(dev);
+ 
+ 	phydev = of_phy_find_device(port->phy_node);
