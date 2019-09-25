@@ -1,0 +1,23 @@
+Index: linux-4.9.184/drivers/net/ethernet/lantiq/switch-api/gsw_ioctl_wrapper.c
+===================================================================
+--- linux-4.9.184.orig/drivers/net/ethernet/lantiq/switch-api/gsw_ioctl_wrapper.c
++++ linux-4.9.184/drivers/net/ethernet/lantiq/switch-api/gsw_ioctl_wrapper.c
+@@ -251,6 +251,7 @@ static int gsw_api_release(struct inode
+ int gsw_api_drv_register(u32 major)
+ {
+ 	int result;
++	static struct class *gsw_class;
+ 	result = register_chrdev(major, ETHSW_API_DEV_NAME, &swapi_fops);
+ 
+ 	if (result < 0) {
+@@ -258,6 +259,10 @@ int gsw_api_drv_register(u32 major)
+ 		return result;
+ 	}
+ 
++	gsw_class = class_create(THIS_MODULE, "switch_api");
++	device_create(gsw_class, NULL, MKDEV(major, 0), NULL, "switch_api");
++	device_create(gsw_class, NULL, MKDEV(major, 1), NULL, "switch_api");
++
+ 	pr_debug("SWAPI: Registered char device [%s] with major no [%d]\n",
+ 		ETHSW_API_DEV_NAME, major);
+ 	return 0;
