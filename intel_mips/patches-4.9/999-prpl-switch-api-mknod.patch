@@ -15,8 +15,8 @@ Index: linux-4.9.184/drivers/net/ethernet/lantiq/switch-api/gsw_ioctl_wrapper.c
  	}
  
 +	gsw_class = class_create(THIS_MODULE, "switch_api");
-+	device_create(gsw_class, NULL, MKDEV(major, 0), NULL, "switch_api");
-+	device_create(gsw_class, NULL, MKDEV(major, 1), NULL, "switch_api");
++	device_create(gsw_class, NULL, MKDEV(major, 0), NULL, "switch_api/0");
++	device_create(gsw_class, NULL, MKDEV(major, 1), NULL, "switch_api/1");
 +
  	pr_debug("SWAPI: Registered char device [%s] with major no [%d]\n",
  		ETHSW_API_DEV_NAME, major);
