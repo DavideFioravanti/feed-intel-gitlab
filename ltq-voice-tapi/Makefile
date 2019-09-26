@@ -135,7 +135,7 @@ define Package/ltq-voice-tapi/install
 	$(INSTALL_BIN) ./files/$(PKG_START_SCRIPT) $(1)/etc/init.d/
 	# Install the driver binary
 	$(INSTALL_DIR) $(1)/$(MODULES_SUBDIR)
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/drv_tapi$(PKG_MODULE_EXTENSION) $(1)/$(MODULES_SUBDIR)
+#	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/drv_tapi$(PKG_MODULE_EXTENSION) $(1)/$(MODULES_SUBDIR)
 	# Copy header file into staging directory
 	$(INSTALL_DIR) $(STAGING_DIR)/usr/docs
 	$(CP) $(PKG_BUILD_DIR)/include/drv_tapi_io.h $(STAGING_DIR)/usr/docs/.
