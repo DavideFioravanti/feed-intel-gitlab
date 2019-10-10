@@ -1,0 +1,25 @@
+Index: dsl-cpe-fapi-79849931/configure.in
+===================================================================
+--- dsl-cpe-fapi-79849931.orig/configure.in
++++ dsl-cpe-fapi-79849931/configure.in
+@@ -382,6 +382,6 @@ if test -n "$EXTRA_VERSION"; then
+    AC_DEFINE_UNQUOTED([EXTRA_VERSION], ["$EXTRA_VERSION"], [extra version])
+ fi
+ 
+-AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile])
++AC_CONFIG_FILES([Makefile src/Makefile])
+ #AC_CONFIG_FILES([Makefile src/Makefile])
+ AC_OUTPUT
+Index: dsl-cpe-fapi-79849931/Makefile.am
+===================================================================
+--- dsl-cpe-fapi-79849931.orig/Makefile.am
++++ dsl-cpe-fapi-79849931/Makefile.am
+@@ -2,7 +2,7 @@
+ 
+ AUTOMAKE_OPTIONS = foreign 1.9 nostdinc
+ 
+-SUBDIRS = src tools
++SUBDIRS = src
+ 
+ DISTCHECK_CONFIGURE_FLAGS=@CONFIGURE_OPTIONS@
+ 
