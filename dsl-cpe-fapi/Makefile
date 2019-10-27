@@ -13,8 +13,7 @@ PKG_SOURCE_VERSION:=0.7.1
 PKG_RELEASE:=1
 PKG_BASE_NAME:=dsl_cpe_fapi
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/prplfoundation/intel_dsl_cpe_fapi.git
-#PKG_SOURCE_URL:=https://git.prpl.dev/intel/dsl_cpe_api.git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/dsl_cpe_api.git
 PKG_SOURCE_VERSION:=79849931d8b048211b113d2c3523930ac656dad3
 DSL_BIN_DIR=/$(VENDOR_PATH)/bin
 

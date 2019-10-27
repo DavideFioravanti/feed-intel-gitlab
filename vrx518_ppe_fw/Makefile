@@ -2,10 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vrx518_ppe_fw
 PKG_VERSION:=1.3.7
-PKG_MD5SUM:=fc89a7f58334b402212289b705665671
 PKG_RELEASE:=1
-PKG_SOURCE:=vrx518_ppe_fw-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://mts-chd.intel.com/~wlnsw/dist/
+PKG_SOURCE_DATE:=2019-10-24
+PKG_SOURCE_VERSION:=0537848df78f7bb091fb5dc0f32bc7a16aaace98
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/vrx518_ppe_fw.git
 
 include $(INCLUDE_DIR)/package.mk
 

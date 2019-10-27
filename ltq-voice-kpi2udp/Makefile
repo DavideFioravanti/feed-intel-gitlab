@@ -3,11 +3,10 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ltq-voice-kpi2udp
 PKG_VERSION:=3.1.0.0
-PKG_MD5SUM:=e69fa082140bcfd075e6e9451141dbd4
 PKG_RELEASE:=1
-PKG_SOURCE:=drv_kpi2udp-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=http://localhost
-PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/drv_kpi2udp-$(PKG_VERSION)
+PKG_SOURCE_VERSION:=6efd78d177d60a55592cadd4af4ce9f5b3925b0e
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/ltq-voice-kpi2udp.git
 PKG_START_SCRIPT:=load_voice_kpi2udp.sh
 PKG_BUILD_DEPENDS:=ltq-voice-tapi ifxos
 

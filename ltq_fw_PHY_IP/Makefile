@@ -3,9 +3,9 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=ltq_fw_PHY_IP
 PKG_VERSION:=2.2
 PKG_RELEASE:=1
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=http://sources.openwrt.org/
-PKG_HASH:=abeb54ac1ca77a7cfccc9524a0d2176252e0f3e865796ac24387962f7cfe574a
+PKG_SOURCE_VERSION:=75031ccb4a6c9fe0125a38b8421c036cacd83bc8
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/ltq_fw_PHY_IP.git
 
 include $(INCLUDE_DIR)/package.mk
 

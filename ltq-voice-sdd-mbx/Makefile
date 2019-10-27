@@ -3,13 +3,10 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ltq-voice-sdd-mbx
 PKG_VERSION:=1.4.0.0
-PKG_MD5SUM:=e85a7a9f7ef51c5fc9b5f21bc967c0bf
 PKG_RELEASE:=1
-PKG_BASE_NAME:=drv_sdd_mbx
-PKG_SOURCE:=$(PKG_BASE_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=http://localhost
-PKG_BUILD_DIR:=$(BUILD_DIR)/ltq-voice-sdd-mbx/$(PKG_BASE_NAME)-$(PKG_VERSION)
-PKG_CAT:=zcat
+PKG_SOURCE_VERSION:=6615ef914cfea33b0dbc69745351206834828f6b
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/ltq-voice-sdd-mbx.git
 PKG_BUILD_DEPENDS:=ifxos PACKAGE_ltq-evtlog:ltq-evtlog
 PKG_CONFIG_DEPENDS:=$(foreach _mr,$(shell grep -w config config/Config.in|awk '{ print $$2 }'),CONFIG_$(_mr))
 

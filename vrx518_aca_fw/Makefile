@@ -3,9 +3,10 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=vrx518_aca_fw
 PKG_VERSION:=1.5.0
 PKG_RELEASE:=1
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=http://sources.openwrt.org/
-PKG_HASH:=36f811df89ecd659f94e7b55d6b18954ccb1712385bd35a8ab555955df412fb6
+PKG_SOURCE_DATE:=2019-10-24
+PKG_SOURCE_VERSION:=1be6b6b0c3aec02a501240887d8800de1357274c
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/vrx518_aca_fw.git
 
 include $(INCLUDE_DIR)/package.mk
 

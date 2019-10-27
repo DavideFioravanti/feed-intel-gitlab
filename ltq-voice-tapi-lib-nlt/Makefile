@@ -3,13 +3,13 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ltq-voice-lib-nlt
 PKG_VERSION:=0.6.0.5
-PKG_MD5SUM:=e3628ecf25277aa429d96648c1857c49
 PKG_RELEASE:=1
+PKG_SOURCE_DATE:=2019-10-24
+PKG_SOURCE_VERSION:=c883b16badf31bbc09f396a3016a57dd48fdf599
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/ltq-voice-lib-nlt.git
 TAPI_LIB_NLT_NAME:=lib_tapi_nlt_cpe
-PKG_SOURCE:=$(TAPI_LIB_NLT_NAME)-$(PKG_VERSION).tar.gz
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(TAPI_LIB_NLT_NAME)-$(PKG_VERSION)
 PKG_BUILD_DEPENDS:=PACKAGE_ltq-tapi:ltq-tapi PACKAGE_ltq-voice-tapi:ltq-voice-tapi
-PKG_SOURCE_URL:=http://localhost
 PKG_FIXUP:=autoreconf
 PKG_CONFIG_DEPENDS:=$(foreach _mr,$(shell grep -w config config/Config.in|awk '{ print $$2 }'),CONFIG_$(_mr))
 

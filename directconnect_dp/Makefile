@@ -4,9 +4,9 @@ include $(INCLUDE_DIR)/kernel.mk
 PKG_NAME:=directconnect-dp
 PKG_VERSION:=0.2.4.2
 PKG_RELEASE:=1
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
-PKG_SOURCE_URL:=http://sources.openwrt.org/
-PKG_HASH:=5c08e67359f2d93201ee4b57811c180c49487ecdba8bfee306c4a851a3464318
+PKG_SOURCE_VERSION:=68ff49ce193835a7bcdf126e6f115da17ec8d634
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/directconnect-dp.git
 
 include $(INCLUDE_DIR)/package.mk
 

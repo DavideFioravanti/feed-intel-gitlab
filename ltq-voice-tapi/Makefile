@@ -3,12 +3,10 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ltq-voice-tapi
 PKG_VERSION:=4.18.1.0
-PKG_MD5SUM:=0a8de1ebdb2b1c771971ce08bf415052
 PKG_RELEASE:=1
-PKG_BASE_NAME:=drv_tapi
-PKG_SOURCE:=$(PKG_BASE_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=http://localhost
-PKG_BUILD_DIR:=$(BUILD_DIR)/ltq-voice-tapi/$(PKG_BASE_NAME)-$(PKG_VERSION)
+PKG_SOURCE_VERSION:=affb59768f9b12327b3b74281a521b7dcaeb362a
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/ltq-voice-tapi.git
 PKG_START_SCRIPT:=load_voice_tapi.sh
 PKG_BUILD_DEPENDS:=ifxos \
                    PACKAGE_ltq-evtlog:ltq-evtlog \
