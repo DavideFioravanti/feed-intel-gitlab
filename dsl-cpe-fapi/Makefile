@@ -13,8 +13,8 @@ PKG_SOURCE_VERSION:=0.7.1
 PKG_RELEASE:=1
 PKG_BASE_NAME:=dsl_cpe_fapi
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://git.prpl.dev/intel/dsl_cpe_api.git
-PKG_SOURCE_VERSION:=bbe7b9f847d26a941b63636e1d096082100dde23
+PKG_SOURCE_URL:=https://git.prpl.dev/intel/dsl-cpe-fapi.git
+PKG_SOURCE_VERSION:=ed5632ccf7a6efe0f59cfbba71ac19463004a59b
 DSL_BIN_DIR=/$(VENDOR_PATH)/bin
 
 PKG_FIXUP:=autoreconf
