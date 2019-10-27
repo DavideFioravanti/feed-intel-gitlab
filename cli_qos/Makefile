@@ -17,7 +17,7 @@ define Package/intel_qoscli
   SECTION:=intel
   CATEGORY:=Intel
   TITLE:=Intel QoS CLI module
-  DEPENDS:= +ltq_qosfapi +libhelper +libsafec
+  DEPENDS:= +intel_qosfapi +libhelper +libsafec
 endef
 
 define Package/intel_qoscli/description
