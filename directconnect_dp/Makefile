@@ -11,6 +11,7 @@ PKG_SOURCE_URL:=https://git.prpl.dev/intel/directconnect-dp.git
 include $(INCLUDE_DIR)/package.mk
 
 define KernelPackage/directconnect-dp
+  BROKEN:=1
   SECTION:=intel
   CATEGORY:=Intel
   TITLE:=DirectConnect datapath driver
