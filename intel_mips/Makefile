@@ -2,6 +2,7 @@ include $(TOPDIR)/rules.mk
 
 BOARD:=intel_mips
 BOARDNAME:=Intel MIPS
+SUBTARGETS:=xrx500
 FEATURES:=squashfs
 VENDOR_PATH="/opt/intel"
 MAINTAINER:=John Crispin <john@phrozen.org>
