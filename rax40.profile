@@ -36,6 +36,7 @@ CONFIG_PACKAGE_libuuid=y
 CONFIG_PACKAGE_ltq-wlan-wave_6x-uci=y
 CONFIG_PACKAGE_ppacmd=y
 CONFIG_PACKAGE_safeclibs=y
+CONFIG_PACKAGE_safeclibs3=y
 CONFIG_PACKAGE_switch_cli=y
 CONFIG_PACKAGE_terminfo=y
 CONFIG_PACKAGE_uuidgen=y
