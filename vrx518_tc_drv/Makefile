@@ -34,7 +34,7 @@ define KernelPackage/vrx518_tc_drv
     CONFIG_ATM_MPOA=y \
     CONFIG_ATM_BR2684_MINI_JUMBO_FRAME_SUPPORT=y \
     CONFIG_LTQ_DATAPATH_ACA_CSUM_WORKAROUND=y
-  DEPENDS:=@TARGET_lantiq_xrx500||TARGET_intel_mips_xrx500||TARGET_x86||TARGET_lantiq_xrx330 +PACKAGE_kmod-directconnect-dp:kmod-directconnect-dp +kmod-vrx518_ep +vrx518_ppe_fw +vrx518_aca_fw
+  DEPENDS:=@TARGET_lantiq_xrx500||TARGET_intel_mips_xrx500||TARGET_x86||TARGET_lantiq_xrx330||TARGET_ipq40xx +PACKAGE_kmod-directconnect-dp:kmod-directconnect-dp +kmod-vrx518_ep +vrx518_ppe_fw +vrx518_aca_fw
 ifeq ($(CONFIG_TARGET_lantiq_xrx330),y)
   AUTOLOAD:=$(call AutoLoad,42,vrx518)
 else
@@ -60,8 +60,9 @@ ifeq ($(CONFIG_TARGET_lantiq_xrx330),y)
 else
  AUTOLOAD:=$(call AutoLoad,27,vrx518 vrx518_tc)
 endif
- FILES:= \
+#  FILES:= \
         $(LINUX_DIR)/drivers/net/ethernet/intel/vrx518/vrx518.ko
+  FILES:=$(PKG_BUILD_DIR)/pcie/vrx518.$(LINUX_KMOD_SUFFIX)
 endef
 
 define KernelPackage/vrx518_ep/description
@@ -81,7 +82,8 @@ endef
 MAKE_OPTS := $(if $(CONFIG_TARGET_lantiq_xrx500),FEATURE_VRX518_GRX500=y) \
 			$(if $(CONFIG_TARGET_intel_mips_xrx500),FEATURE_VRX518_GRX500=y) \
 	     $(if $(CONFIG_PACKAGE_kmod-directconnect_dp),FEATURE_VRX518_DC_DP=y) \
-	     $(if $(CONFIG_kmod-vrx518_tc_drv_FEATURE_SELECT_CPUPATH),FEATURE_VRX518_CPU=y)
+	     $(if $(CONFIG_kmod-vrx518_tc_drv_FEATURE_SELECT_CPUPATH),FEATURE_VRX518_CPU=y) \
+       CONFIG_VRX518=m FEATURE_VRX518_CPU=y
 
 include $(INCLUDE_DIR)/kernel-defaults.mk
 
@@ -94,10 +96,20 @@ endef
 define Build/InstallDev
 	$(INSTALL_DIR) $(1)/include/net/
 	$(CP) $(PKG_BUILD_DIR)/$(PLAT_DIR)/inc/dsl_tc.h $(1)/include/net/
+	$(CP) $(PKG_BUILD_DIR)/$(PLAT_DIR)/inc/dsl_tc.h $(LINUX_DIR)/include/net/
+	$(CP) $(PKG_BUILD_DIR)/include/net/dc_ep.h $(LINUX_DIR)/include/net/
 endef
 
+NOSTDINC_FLAGS = \
+	-I$(PKG_BUILD_DIR)/$(PLAT_DIR) \
+  -I$(PKG_BUILD_DIR)/include \
+  -I$(PKG_BUILD_DIR)/$(PLAT_DIR)/inc
+
+#VRX518_MAKEDEFS += CONFIG_VRX518=m
+
 define Build/Compile
-	$(MAKE) $(MAKE_OPTS) $(KERNEL_MAKEOPTS) SUBDIRS="$(PKG_BUILD_DIR)/$(PLAT_DIR)" modules
+	$(MAKE) $(MAKE_OPTS) $(KERNEL_MAKEOPTS) SUBDIRS="$(PKG_BUILD_DIR)/pcie" NOSTDINC_FLAGS="$(NOSTDINC_FLAGS)" modules
+	$(MAKE) $(MAKE_OPTS) $(KERNEL_MAKEOPTS) SUBDIRS="$(PKG_BUILD_DIR)/$(PLAT_DIR)" NOSTDINC_FLAGS="$(NOSTDINC_FLAGS)" modules
 endef
 
 define Build/Clean

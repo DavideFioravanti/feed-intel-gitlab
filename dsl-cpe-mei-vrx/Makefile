@@ -16,6 +16,8 @@ DSL_FW_DIR=/lib/firmware
 
 PKG_FIXUP:=autoreconf
 
+PATCH_DIR:=./patches
+
 include $(INCLUDE_DIR)/package.mk
 
 DSL_NETLINK_ID=$(strip $(subst ",, $(CONFIG_dsl-cpe-mei-vrx_DSL_NETLINK_ID)))
@@ -81,7 +83,7 @@ CONFIGURE_ARGS += --enable-device=vr10_320
 else ifeq ($(CONFIG_dsl-cpe-mei-vrx_DEVICE_VR11),y)
 CONFIGURE_ARGS += --enable-device=vr11
 else
-CONFIGURE_ARGS += --enable-device=vr9
+CONFIGURE_ARGS += --enable-device=vr11
 MEI_DRV_CFLAGS=-DMEI_SUPPORT_DSM=1
 endif
 
@@ -92,7 +94,7 @@ MEI_DRV_CFLAGS=-DMEI_SUPPORT_DSM=1
 else ifeq ($(CONFIG_dsl-cpe-mei-vrx_DEVICE_VR11),y)
 MEI_DRV_CFLAGS=-DMEI_SUPPORT_DSM=1
 else
-MEI_DRV_CFLAGS=-DMEI_SUPPORT_DSM=0
+MEI_DRV_CFLAGS=-DMEI_SUPPORT_DSM=1
 endif
 
 ifeq ($(CONFIG_TARGET_x86),y)
